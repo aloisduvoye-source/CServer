@@ -34,7 +34,7 @@ int cs_password_hash(const char *password, char *out, size_t size){
 
 // compare sans s'arrêter à la première différence : le temps de réponse
 // ne révèle pas à quel endroit les chaînes diffèrent
-static int const_time_eq(const char *a, const char *b){
+int const_time_eq(const char *a, const char *b){
 	size_t la = strlen(a);
 	if (la != strlen(b)){return 0;}
 	unsigned char diff = 0;
@@ -131,6 +131,10 @@ int cs_session_start(cs_ctx *c, long user_id){
 		cs_config.cookie_name, token, SESSION_SECONDS);
 	cs_header(c, cookie);
 
+	// un nouveau jeton CSRF à chaque connexion : celui d'avant (peut-être vu par
+	// quelqu'un d'autre sur cet ordinateur) ne sert plus
+	if (csrf_new(c) < 0){return -1;}
+
 	// la suite de la requête voit déjà la personne connectée
 	c->user_state = 0;
 	return 0;
@@ -150,4 +154,64 @@ void cs_session_end(cs_ctx *c){
 		cs_config.cookie_name);
 	cs_header(c, cookie);
 	c->user_state = -1;
+}
+
+/* ---------------------------------------------------------------- jeton CSRF */
+
+// "Double envoi" : le jeton est dans un cookie ET dans chaque formulaire. Un autre site
+// peut faire envoyer un formulaire à ton navigateur, avec tes cookies, mais il ne peut
+// pas lire le jeton pour le recopier dans le formulaire : la requête est refusée.
+
+static void csrf_cookie_name(char *out, size_t size){
+	snprintf(out, size, "%s_csrf", cs_config.cookie_name);
+}
+
+int csrf_new(cs_ctx *c){
+	if (new_token(c->csrf) < 0){return -1;}
+
+	char name[96];
+	char cookie[256];
+	csrf_cookie_name(name, sizeof(name));
+	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+		name, c->csrf, SESSION_SECONDS);
+	cs_header(c, cookie);
+	return 0;
+}
+
+const char *cs_csrf_token(cs_ctx *c){
+	if (!cs_config.accounts){return "";}   // sans comptes, pas de session à protéger
+	if (c->csrf[0] != '\0'){return c->csrf;}
+
+	// celui du navigateur, sinon un nouveau
+	char name[96];
+	csrf_cookie_name(name, sizeof(name));
+	char token[TOKEN_HEX + 1];
+	if (cs_cookie(c, name, token, sizeof(token)) == 0 && strlen(token) == TOKEN_HEX){
+		memcpy(c->csrf, token, sizeof(token));
+		return c->csrf;
+	}
+	return csrf_new(c) == 0 ? c->csrf : "";
+}
+
+int csrf_check(cs_ctx *c){
+	// sans cookie de session, il n'y a rien à usurper : pas de vérification
+	char session[TOKEN_HEX + 1];
+	if (!cs_config.accounts || cs_cookie(c, cs_config.cookie_name, session, sizeof(session)) < 0){
+		return 1;
+	}
+
+	char name[96];
+	char expected[TOKEN_HEX + 1];
+	csrf_cookie_name(name, sizeof(name));
+	if (cs_cookie(c, name, expected, sizeof(expected)) < 0 || strlen(expected) != TOKEN_HEX){
+		return 0;
+	}
+
+	// le jeton envoyé : dans le formulaire, ou dans l'en-tête X-CSRF-Token (JavaScript)
+	char sent[TOKEN_HEX + 1];
+	if (cs_form(c, "csrf", sent, sizeof(sent)) < 0){
+		if (strlen(c->req.csrf) >= sizeof(sent)){return 0;}
+		strcpy(sent, c->req.csrf);
+	}
+	return const_time_eq(sent, expected);
 }

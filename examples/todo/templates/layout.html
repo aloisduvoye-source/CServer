@@ -8,7 +8,7 @@
 </head>
 <body>
     <nav><a href="/">{{site_name}}</a>{{#user}} <a href="/todos">my todos</a>{{/user}}
-        <span class="user">{{#user}}{{user}} <form class="inline" method="post" action="/logout"><button class="link">log out</button></form>{{/user}}{{^user}}<a href="{{login_path}}">log in</a> <a href="{{signup_path}}">sign up</a>{{/user}}</span></nav>
+        <span class="user">{{#user}}{{user}} <form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{csrf}}"><button class="link">log out</button></form>{{/user}}{{^user}}<a href="{{login_path}}">log in</a> <a href="{{signup_path}}">sign up</a>{{/user}}</span></nav>
     <main>
 {{{content}}}
     </main>

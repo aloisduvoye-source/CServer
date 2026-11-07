@@ -15,6 +15,7 @@ typedef struct {
 	char   query[512];    // ce qui suit le "?", brut : lire avec cs_query()
 	char   cookie[4096];  // en-tête Cookie brut : lire avec cs_cookie()
 	char   ip[46];        // adresse du client
+	char   csrf[72];      // en-tête X-CSRF-Token (voir cs_csrf_token)
 	char  *body;          // corps (POST), terminé par '\0' : lire avec cs_form()
 	size_t body_len;
 } cs_request;
@@ -36,6 +37,7 @@ typedef struct {
 	int        responded;   // une réponse est déjà partie
 	char       headers[1024];  // en-têtes ajoutés par cs_header(), pour la réponse à venir
 	int        head;        // requête HEAD : les réponses n'envoient que leurs en-têtes
+	char       csrf[65];    // le jeton CSRF de la requête, une fois connu
 
 	// interne : passer par cs_param() ; segments capturés par une route "/x/:nom"
 	int        params_count;
@@ -113,7 +115,7 @@ void cs_header(cs_ctx *c, const char *line);
 //
 // Une variable absente vaut "". Toujours disponibles : site_name, user (le nom de
 // l'utilisateur connecté, ou vide), accounts ("1" si le site a des comptes),
-// login_path et signup_path. Les boucles se font en C : rendre un petit modèle
+// login_path, signup_path et csrf (le jeton à mettre dans chaque formulaire POST). Les boucles se font en C : rendre un petit modèle
 // par élément avec cs_render(), puis passer le tout au modèle de la page avec cs_set_html().
 //
 // Le framework fournit layout.html, login.html et signup.html ; un fichier du même nom
@@ -213,6 +215,13 @@ int  cs_user_login(cs_ctx *c, const char *name, const char *password, cs_user *u
 int  cs_session_start(cs_ctx *c, long user_id);
 // ferme la session : supprimée côté serveur, et cookie effacé dans la réponse
 void cs_session_end(cs_ctx *c);
+
+// le jeton CSRF du navigateur (créé s'il n'en a pas encore). Tout POST qui porte un
+// cookie de session doit le renvoyer, sinon le framework répond 403 avant même
+// d'appeler le handler : dans un champ de formulaire "csrf" (dans les modèles :
+// <input type="hidden" name="csrf" value="{{csrf}}">), ou dans l'en-tête
+// X-CSRF-Token (pour du JavaScript). "" sans .accounts.
+const char *cs_csrf_token(cs_ctx *c);
 
 // --- les pages et actions prêtes à l'emploi (modèles login.html et signup.html) ;
 // à déclarer dans les routes du site avec CS_AUTH_ROUTES (demande .accounts = 1)

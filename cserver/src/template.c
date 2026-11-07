@@ -71,6 +71,9 @@ static const char *lookup(cs_ctx *c, const cs_vars *v, const char *name, int *ra
 	if (strcmp(name, "site_name") == 0){
 		return cs_config.name;
 	}
+	if (strcmp(name, "csrf") == 0){
+		return cs_csrf_token(c);
+	}
 	if (strcmp(name, "login_path") == 0){
 		return cs_config.login_path;
 	}

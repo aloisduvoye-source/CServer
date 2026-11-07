@@ -81,6 +81,14 @@ void route(cs_ctx *c){
 			continue;
 		}
 
+		// une requête qui modifie quelque chose, avec une session : le jeton CSRF
+		// doit être là. Vérifié ici, une fois pour toutes les routes.
+		if (strcmp(method, "GET") != 0 && !csrf_check(c)){
+			fprintf(stderr, "%s %s : jeton CSRF absent ou faux, requête refusée\n", c->req.method, c->req.path);
+			cs_error(c, 403);
+			return;
+		}
+
 		if (r->handler != NULL){
 			r->handler(c);
 		}

@@ -308,6 +308,8 @@ Ce qui est garanti, quel que soit le niveau :
 - même message et même durée que le nom ou le mot de passe soit faux : on ne peut pas deviner quels comptes existent ;
 - après `login_attempts` échecs depuis une IP, refus sans vérifier ;
 - cookie `HttpOnly` (illisible par le JavaScript) et `SameSite=Lax` (pas envoyé par les formulaires d'autres sites) ;
+- **jeton CSRF** : tout `POST` qui porte un cookie de session doit renvoyer le jeton du navigateur, sinon le framework répond 403 avant d'appeler le handler. Dans un modèle, chaque formulaire `POST` contient `<input type="hidden" name="csrf" value="{{csrf}}">` ; en JavaScript, on l'envoie dans l'en-tête `X-CSRF-Token`. Un autre site peut faire envoyer un formulaire avec tes cookies, pas lire ce jeton ;
+- au plus `signup_limit` inscriptions par IP, et `cs_rate_limit` pour limiter n'importe quelle action (un message, une tâche...) ;
 - jeton de session de 256 bits tiré par `getrandom()`, supprimé côté serveur à la déconnexion.
 
 ## Configuration
@@ -334,6 +336,7 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 | `username_min`, `username_max` | `3`, `20` | longueur d'un nom (au plus 31) |
 | `password_min` | `8` | longueur minimale d'un mot de passe |
 | `login_attempts`, `login_window` | `5`, `900` | échecs autorisés par IP, sur cette durée (secondes) |
+| `signup_limit`, `signup_window` | `5`, `3600` | inscriptions par IP, sur cette durée (secondes) |
 | `login_path`, `signup_path` | `"/login"`, `"/signup"` | si on les change, déclarer les routes de comptes à la main |
 
 Deux variables d'environnement l'emportent sur la configuration : `CSERVER_PORT` et `CSERVER_DB`. Les tests s'en servent pour tourner sur un autre port, avec une base jetable.
@@ -391,6 +394,5 @@ Chaque cible tourne `FUZZ_TIME` secondes (60 par défaut : `make fuzz FUZZ_TIME=
 
 - **Pas de HTTPS** : à placer derrière un proxy (Caddy, nginx) pour une mise en ligne, et le cookie n'a pas l'option `Secure`.
 - **Un processus par requête** (`fork`) : simple et robuste (un plantage ne touche qu'une requête), mais pas fait pour des milliers de visiteurs simultanés. Leur nombre est plafonné par `max_connections`, et chaque requête est bornée dans le temps (`read_timeout`, `request_timeout`) : un client qui envoie sa requête goutte à goutte, ou un handler qui ne finit pas, ne bloquent pas le serveur.
-- **Pas de jeton CSRF** : `SameSite=Lax` protège les navigateurs récents.
 - **SQLite uniquement**, une base par site.
 - **HTTP/1.1, sans HTTP/2** : une connexion sert plusieurs requêtes à la suite (100 au plus), les requêtes envoyées d'un coup sont toutes lues, les corps en morceaux (`chunked`) sont acceptés, `HEAD` et `Expect: 100-continue` sont gérés. Une connexion gardée ouverte occupe un processus jusqu'à `keepalive_timeout` : c'est ce que plafonne `max_connections`.

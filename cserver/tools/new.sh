@@ -140,7 +140,7 @@ cat > "$PROJECT/templates/layout.html" <<'EOF'
 {{/script}}</head>
 <body>
     <nav><a href="/">{{site_name}}</a> <a href="/hello">hello</a>{{#accounts}}
-        <span class="user">{{#user}}{{user}} <form class="inline" method="post" action="/logout"><button class="link">log out</button></form>{{/user}}{{^user}}<a href="{{login_path}}">log in</a> <a href="{{signup_path}}">sign up</a>{{/user}}</span>{{/accounts}}</nav>
+        <span class="user">{{#user}}{{user}} <form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{csrf}}"><button class="link">log out</button></form>{{/user}}{{^user}}<a href="{{login_path}}">log in</a> <a href="{{signup_path}}">sign up</a>{{/user}}</span>{{/accounts}}</nav>
     <main>
 {{{content}}}
     </main>

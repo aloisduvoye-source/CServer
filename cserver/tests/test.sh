@@ -144,6 +144,25 @@ TOKEN=$(awk '$6 == "test_session" { print $7 }' "$JEAN")
 check_contains "bonjour jean" /prive -H "Cookie: autre=1; test_session=$TOKEN; x=y"
 check 303 GET /prive -H "Cookie: test_session=0000000000000000000000000000000000000000000000000000000000000000"
 
+# --------------------------------------------------------------- jeton CSRF
+# (curl appelé directement : les fonctions check ajoutent le jeton toutes seules)
+TOK=$(csrf_of "$JEAN")
+[ ${#TOK} -eq 64 ] && pass "jeton CSRF posé à la connexion" || fail "pas de jeton CSRF dans les cookies de jean"
+check_contains "value=\"$TOK\"" /vars -b "$JEAN"                  # {{csrf}} dans le layout du framework
+post() { curl -s -o /dev/null -w '%{http_code}' "$@" "$BASE/echo"; }
+
+[ "$(post --data-binary 'q=x' -b "$JEAN")" = 403 ] \
+	&& pass "POST avec session, sans jeton : 403" || fail "POST avec session, sans jeton : accepté"
+[ "$(post --data-binary 'q=x' -b "$JEAN" -H 'X-CSRF-Token: 0000000000000000000000000000000000000000000000000000000000000000')" = 403 ] \
+	&& pass "POST avec un faux jeton : 403" || fail "POST avec un faux jeton : accepté"
+[ "$(post --data-binary "q=x&csrf=$TOK" -b "$JEAN")" = 200 ] \
+	&& pass "POST avec le jeton dans le formulaire : 200" || fail "POST avec le jeton dans le formulaire : refusé"
+[ "$(post --data-binary 'q=x' -b "$JEAN" -H "X-CSRF-Token: $TOK")" = 200 ] \
+	&& pass "POST avec le jeton dans X-CSRF-Token : 200" || fail "POST avec X-CSRF-Token : refusé"
+[ "$(post --data-binary 'q=x')" = 200 ] \
+	&& pass "POST sans session : pas de jeton demandé" || fail "POST sans session : refusé"
+grep -q "jeton CSRF absent ou faux" "$DBDIR/server.log" && pass "refus signalé dans le terminal" || fail "refus non signalé"
+
 # --------------------------------------------------------------- comptes : déconnexion
 # le cookie est effacé ET la session supprimée côté serveur
 cp "$JEAN" "$DBDIR/jean.old"
@@ -154,6 +173,8 @@ check 303 GET  /prive  -b "$DBDIR/jean.old"                     # ancien cookie 
 # --------------------------------------------------------------- comptes : connexion
 check 303 POST /connexion --data-binary "name=jean&password=motdepasse1" -c "$JEAN"
 check_contains "bonjour jean" /prive -b "$JEAN"
+[ -n "$(csrf_of "$JEAN")" ] && [ "$(csrf_of "$JEAN")" != "$TOK" ] \
+	&& pass "nouveau jeton CSRF à chaque connexion" || fail "le jeton CSRF n'a pas changé à la connexion"
 check 303 POST /connexion --data-binary "name=JEAN&password=motdepasse1"          # casse ignorée
 
 # connexion par API : écrite par le site de test avec les briques publiques

@@ -145,6 +145,16 @@ static int parse_head(char *head, cs_request *req, head_info *info){
 		}
 	}
 
+	// le jeton CSRF envoyé par du JavaScript (trop long : ignoré, la vérification échouera)
+	const char *csrf = find_header(head, "X-CSRF-Token");
+	if (csrf != NULL){
+		size_t len = strcspn(csrf, "\r \t");
+		if (len < sizeof(req->csrf)){
+			memcpy(req->csrf, csrf, len);
+			req->csrf[len] = '\0';
+		}
+	}
+
 	// garder la connexion ? Par défaut oui en 1.1, non en 1.0 ; l'en-tête Connection décide
 	char value[128];
 	header_lower(head, "Connection", value, sizeof(value));

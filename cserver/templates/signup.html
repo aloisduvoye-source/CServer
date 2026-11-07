@@ -1,5 +1,5 @@
     <h1>sign up</h1>
-    <form method="post" action="{{signup_path}}">
+    <form method="post" action="{{signup_path}}"><input type="hidden" name="csrf" value="{{csrf}}">
         <p><input name="name" placeholder="name" autocomplete="username" required value="{{name}}"></p>
         <p><input name="password" type="password" placeholder="password ({{password_min}}+ characters)" autocomplete="new-password" minlength="{{password_min}}" required></p>
         <p><button>sign up</button>{{#error}} <span class="error">{{error}}</span>{{/error}}</p>

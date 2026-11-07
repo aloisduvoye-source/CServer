@@ -16,11 +16,17 @@ function deleteForm(id) {
     button.className = "link";
     button.textContent = "delete";
 
+    // le jeton CSRF : le même que celui des autres formulaires de la page
+    const csrf = document.createElement("input");
+    csrf.type = "hidden";
+    csrf.name = "csrf";
+    csrf.value = document.querySelector('input[name="csrf"]')?.value ?? "";
+
     const del = document.createElement("form");
     del.className = "inline";
     del.method = "post";
     del.action = "/guestbook/delete";
-    del.append(input, button);
+    del.append(csrf, input, button);
     return del;
 }
 

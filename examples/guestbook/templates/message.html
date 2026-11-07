@@ -1,5 +1,5 @@
 {{! un message ; rendu une fois par message par guestbook.c. Même structure que render() dans www/guestbook.js }}
     <article>
-        <p class="meta"><strong>{{name}}</strong> · {{date}}{{#mine}} <form class="inline" method="post" action="/guestbook/delete"><input type="hidden" name="id" value="{{id}}"><button class="link">delete</button></form>{{/mine}}</p>
+        <p class="meta"><strong>{{name}}</strong> · {{date}}{{#mine}} <form class="inline" method="post" action="/guestbook/delete"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="id" value="{{id}}"><button class="link">delete</button></form>{{/mine}}</p>
         <p class="text">{{message}}</p>
     </article>

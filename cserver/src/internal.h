@@ -90,8 +90,12 @@ int  db_login_failures(sqlite3 *db, const char *ip, long since);
 int  db_rate_limit(sqlite3 *db, const char *action, const char *key, int max, long now, long window);
 void db_login_failure_add(sqlite3 *db, const char *ip, long now, long forget_before);
 
-/* ---------------------------------------------------------------- auth.c */
+/* ---------------------------------------------------------------- accounts.c, auth.c */
 
 int auth_lookup_user(cs_ctx *c, cs_user *user);   // 1 si le cookie correspond à une session
+int const_time_eq(const char *a, const char *b);   // comparaison en temps constant
+
+int csrf_new(cs_ctx *c);     // nouveau jeton CSRF, et son cookie dans la réponse ; 0 ou -1
+int csrf_check(cs_ctx *c);   // 1 si la requête peut passer (jeton correct, ou pas de session)
 
 #endif

@@ -56,6 +56,21 @@ cs_finish() {
 pass() { printf 'ok     %s\n' "$*"; }
 fail() { printf 'ECHEC  %s\n' "$*"; FAIL=1; }
 
+# le jeton CSRF d'un fichier de cookies (le cookie *_csrf), ou rien
+csrf_of() { # csrf_of <fichier de cookies>
+	[ -f "$1" ] && awk '$6 ~ /_csrf$/ { t = $7 } END { if (t != "") print t }' "$1"
+}
+
+# les options curl passées avec -b <fichier> : leur jeton CSRF, comme le ferait une
+# vraie page (formulaire) ou son JavaScript (en-tête X-CSRF-Token)
+csrf_from_args() {
+	prev=""
+	for a in "$@"; do
+		if [ "$prev" = "-b" ]; then csrf_of "$a"; return; fi
+		prev=$a
+	done
+}
+
 # méthode affichée : POST si les options curl contiennent des données
 method_of() {
 	for a in "$@"; do [ "$a" = "--data-binary" ] && { echo POST; return; }; done
@@ -64,6 +79,7 @@ method_of() {
 
 check() { # check <code attendu> <méthode> <chemin> [options curl...]
 	code=$1; method=$2; path=$3; shift 3
+	tok=$(csrf_from_args "$@"); [ -n "$tok" ] && set -- -H "X-CSRF-Token: $tok" "$@"
 	got=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' -X "$method" "$@" "$BASE$path")
 	if [ "$got" = "$code" ]; then
 		pass "$method $path -> $got"
@@ -76,6 +92,7 @@ check() { # check <code attendu> <méthode> <chemin> [options curl...]
 check_contains() { # check_contains <texte attendu> <chemin> [options curl...]
 	text=$1; path=$2; shift 2
 	method=$(method_of "$@")
+	tok=$(csrf_from_args "$@"); [ -n "$tok" ] && set -- -H "X-CSRF-Token: $tok" "$@"
 	if curl -s --path-as-is "$@" "$BASE$path" | grep -qF -- "$text"; then
 		pass "$method $path contient $text"
 	else
@@ -86,6 +103,7 @@ check_contains() { # check_contains <texte attendu> <chemin> [options curl...]
 check_absent() { # check_absent <texte interdit> <chemin> [options curl...]
 	text=$1; path=$2; shift 2
 	method=$(method_of "$@")
+	tok=$(csrf_from_args "$@"); [ -n "$tok" ] && set -- -H "X-CSRF-Token: $tok" "$@"
 	if curl -s --path-as-is "$@" "$BASE$path" | grep -qF -- "$text"; then
 		fail "$method $path contient $text"
 	else
