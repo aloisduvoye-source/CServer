@@ -4,6 +4,18 @@
 #include<netinet/in.h>
 #include<string.h>
 #include<unistd.h>
+#include<sys/stat.h>
+#include<fcntl.h>
+
+char* content_type(char* filename){
+	char *dot = strrchr(filename, '.');
+	if (dot == NULL){return "text/plain";}
+	if (strcmp(dot, ".html") == 0){return "text/html";}
+	if (strcmp(dot, ".css") == 0){return "text/css";}
+	if (strcmp(dot, ".png") == 0){return "image/png";}
+	if (strcmp(dot, ".jpg") == 0){return "image/jpeg";}
+	return "text/plain";
+}
 
 
 int main(void){
@@ -35,6 +47,7 @@ int main(void){
 	}
 
 	printf("listening on 8080\n");
+
 	while (1) {
 		int client = accept(server, NULL, NULL);
 		if (client<0){
@@ -52,20 +65,52 @@ int main(void){
 
 		request[n] = '\0';
 
-		 char method[8], path[256];
-		 if (sscanf(request, "%7s %255s", method, path) != 2){
+		char method[8], path[256];
+		if (sscanf(request, "%7s %255s", method, path) != 2){
 			close (client);
 			continue;
-		 }
+		}
 
 		printf("%s %s\n", method, path);
 
-		char *response=
-			"HTTP/1.0 200 OK\r\n"
+		char filename[512];
+		snprintf(
+				filename,
+				sizeof(filename),
+				"www%s",
+				strcmp(path, "/") == 0 ? "/index.html" : path
+		);
+
+		struct stat info;
+		int file = -1;
+		if (stat(filename,&info) < 0 || !S_ISREG(info.st_mode) || (file  = open(filename, O_RDONLY)) < 0) {
+			char *response=
+			"HTTP/1.0 404 not found\r\n"
 			"Content-Type: text/html\r\n"
 			"\r\n"
-			"<h1>Hello World<h1>\n";
-		write(client, response, strlen(response));
+			"<h1>404 dumbass<h1>\n";
+			write(client, response, strlen(response));
+			close(client);
+			continue;
+		}
+
+		char header[256];
+		int lenght = snprintf(header, sizeof(header),
+			"HTTP/1.0 200 OK\r\n"
+			"Content-Type: %s\r\n"
+			"Content-Length: %ld\r\n"
+			"\r\n",
+			content_type(filename), (long)info.st_size
+		);
+		write(client, header, lenght);
+
+		char buffer[4096];
+		ssize_t count;
+		while ((count = read(file, buffer, sizeof(buffer))) > 0){
+			write(client, buffer, count);
+		}
+
+		close(file);
 		close(client);
 
 	}
