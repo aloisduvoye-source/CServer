@@ -31,6 +31,43 @@ static void on_request_timeout(int sig){
 // une connexion ne sert pas indéfiniment : au-delà, le client en ouvre une autre
 #define MAX_REQUESTS_PER_CONNECTION 100
 
+// trusted_proxy : des adresses ("127.0.0.1") ou des plages IPv4 ("172.16.0.0/12"),
+// séparées par des virgules ou des espaces. Renvoie 1 si `ip` en fait partie, 0 sinon,
+// -1 si la liste est mal écrite (vérifié au démarrage).
+static int proxy_match(const char *list, const char *ip){
+	if (list == NULL){return 0;}
+	struct in_addr addr;
+	int have_addr = ip != NULL && inet_pton(AF_INET, ip, &addr) == 1;
+
+	char item[64];
+	const char *p = list;
+	while (*p != '\0'){
+		p += strspn(p, ", \t");
+		size_t len = strcspn(p, ", \t");
+		if (len == 0){break;}
+		if (len >= sizeof(item)){return -1;}
+		memcpy(item, p, len);
+		item[len] = '\0';
+		p += len;
+
+		int bits = 32;
+		char *slash = strchr(item, '/');
+		if (slash != NULL){
+			char *end;
+			long b = strtol(slash + 1, &end, 10);
+			if (slash[1] == '\0' || *end != '\0' || b < 0 || b > 32){return -1;}
+			bits = (int)b;
+			*slash = '\0';
+		}
+		struct in_addr net;
+		if (inet_pton(AF_INET, item, &net) != 1){return -1;}
+
+		uint32_t mask = bits == 0 ? 0 : htonl(0xFFFFFFFFu << (32 - bits));
+		if (have_addr && (addr.s_addr & mask) == (net.s_addr & mask)){return 1;}
+	}
+	return 0;
+}
+
 static void handle_client(int client, const char *ip){
 	signal(SIGALRM, on_request_timeout);
 
@@ -64,6 +101,16 @@ static void handle_client(int client, const char *ip){
 
 		keep_alive = keep_alive && served + 1 < MAX_REQUESTS_PER_CONNECTION;
 		snprintf(c.req.ip, sizeof(c.req.ip), "%s", ip);
+		// derrière un proxy, toutes les connexions viennent de lui : l'adresse du
+		// visiteur est dans X-Forwarded-For. On ne la croit que si la connexion vient
+		// vraiment du proxy ; sinon n'importe qui changerait d'adresse à volonté
+		// (et contournerait les limites par IP).
+		if (proxy_match(cs_config.trusted_proxy, ip) == 1){
+			if (conn.fwd_ip[0] != '\0'){
+				snprintf(c.req.ip, sizeof(c.req.ip), "%s", conn.fwd_ip);
+			}
+			c.req.https = conn.fwd_https;
+		}
 		c.head = strcmp(c.req.method, "HEAD") == 0;
 		cs_header(&c, keep_alive ? "Connection: keep-alive" : "Connection: close");
 		printf("[pid %d] %s %s %s%s%s (%zu octets)\n", getpid(), c.req.ip, c.req.method, c.req.path,
@@ -129,6 +176,22 @@ static int load_config(const cs_app *app){
 	if (port != NULL){cs_config.port = atoi(port);}
 	if (cs_config.port <= 0 || cs_config.port > 65535){
 		fprintf(stderr, "port invalide : %d\n", cs_config.port);
+		return -1;
+	}
+
+	const char *proxy = getenv("CSERVER_PROXY");
+	if (proxy != NULL){cs_config.trusted_proxy = proxy[0] != '\0' ? proxy : NULL;}
+	if (proxy_match(cs_config.trusted_proxy, NULL) < 0){
+		fprintf(stderr, "trusted_proxy invalide : \"%s\" (attendu : des adresses IPv4 ou "
+		                "des plages comme 10.0.0.0/8, séparées par des virgules)\n", cs_config.trusted_proxy);
+		return -1;
+	}
+
+	const char *host = getenv("CSERVER_HOST");
+	if (host != NULL){cs_config.host = host[0] != '\0' ? host : NULL;}
+	struct in_addr ignored;
+	if (cs_config.host != NULL && inet_pton(AF_INET, cs_config.host, &ignored) != 1){
+		fprintf(stderr, "host invalide : \"%s\" (attendu : une adresse IPv4, ex : 127.0.0.1)\n", cs_config.host);
 		return -1;
 	}
 
@@ -246,7 +309,8 @@ int cs_run(const cs_app *app){
 	struct sockaddr_in adress;
 	memset(&adress,0,sizeof(adress));
 	adress.sin_family = AF_INET;
-	adress.sin_addr.s_addr = INADDR_ANY;
+	adress.sin_addr.s_addr = INADDR_ANY;   // toutes les adresses de la machine
+	if (cs_config.host != NULL){inet_pton(AF_INET, cs_config.host, &adress.sin_addr);}
 	adress.sin_port =  htons(cs_config.port);
 
 	int yes = 1;
@@ -292,8 +356,11 @@ int cs_run(const cs_app *app){
 	sigaddset(&sigchld, SIGCHLD);
 	sigprocmask(SIG_BLOCK, &sigchld, &normal);
 
-	printf("%s : listening on %d (au plus %d connexions à la fois)\n",
-		cs_config.name, cs_config.port, cs_config.max_connections);
+	printf("%s : listening on %s:%d (au plus %d connexions à la fois)\n",
+		cs_config.name, cs_config.host != NULL ? cs_config.host : "*", cs_config.port, cs_config.max_connections);
+	if (cs_config.trusted_proxy != NULL){
+		printf("proxy de confiance : %s\n", cs_config.trusted_proxy);
+	}
 
 	int was_full = 0;
 	while (1) {

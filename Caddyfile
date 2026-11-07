@@ -1,0 +1,7 @@
+# Caddy reçoit les visiteurs en HTTPS et transmet au site en HTTP, avec leur adresse
+# (X-Forwarded-For) et le protocole (X-Forwarded-Proto). Le HTTP simple est
+# redirigé vers le HTTPS.
+{$DOMAIN} {
+	reverse_proxy site:8080
+	encode gzip
+}

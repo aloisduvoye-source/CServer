@@ -1,0 +1,52 @@
+# Mise en ligne : le site, avec Caddy devant pour le HTTPS.
+#
+#   DOMAIN=mon-site.fr docker compose up -d --build
+#   DOMAIN=mon-site.fr DIR=examples/guestbook docker compose up -d --build   # un exemple
+#
+# Le domaine doit pointer vers la machine, avec les ports 80 et 443 ouverts : Caddy
+# obtient alors le certificat tout seul (Let's Encrypt) et le renouvelle.
+# Sans DOMAIN : https://localhost, avec un certificat local (le navigateur avertit).
+
+services:
+  site:
+    build:
+      context: .
+      args:
+        DIR: ${DIR:-.}
+    environment:
+      # seul Caddy est cru quand il donne l'adresse du visiteur (X-Forwarded-For)
+      CSERVER_PROXY: 172.31.0.2
+    volumes:
+      - site-data:/site/data          # la base SQLite
+    networks:
+      - web
+    restart: unless-stopped
+    # pas de "ports" : le site n'est joignable que par Caddy
+
+  caddy:
+    image: caddy:2.10
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data              # les certificats
+      - caddy-config:/config
+    networks:
+      web:
+        ipv4_address: 172.31.0.2
+    restart: unless-stopped
+
+networks:
+  web:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+volumes:
+  site-data:
+  caddy-data:
+  caddy-config:

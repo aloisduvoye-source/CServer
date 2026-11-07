@@ -21,6 +21,10 @@ typedef struct {
 	size_t      src_len;
 	char        buf[HTTP_BUF];   // reçu mais pas encore utilisé : peut-être le début
 	size_t      len;             // de la requête suivante, envoyée à la suite
+	// ce que disent X-Forwarded-For et X-Forwarded-Proto pour la dernière requête :
+	// n'importe qui peut les écrire, server.c ne les croit que venant du proxy
+	char        fwd_ip[46];      // "" si absent ou invalide
+	int         fwd_https;
 } http_conn;
 
 // lit et analyse la prochaine requête de la connexion (en-têtes + corps).

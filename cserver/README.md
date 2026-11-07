@@ -320,6 +320,8 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 |---|---|---|
 | `name` | `"cserver"` | nom du site (titre des pages, `site_name`) |
 | `port` | `8080` | port d'écoute |
+| `host` | toutes | adresse d'écoute : `"127.0.0.1"` pour n'être joignable que depuis la machine (derrière un proxy) |
+| `trusted_proxy` | aucun | adresses du proxy, ex : `"127.0.0.1"` ou `"10.0.0.0/8, 127.0.0.1"` (voir [Mise en ligne](#mise-en-ligne)) |
 | `user` | aucun | lancé en root (pour le port 80...) : l'utilisateur sans droits à prendre une fois le port ouvert |
 | `routes` | aucune | table terminée par `CS_END` |
 | `not_found` | page minimale | handler de la page 404 |
@@ -340,7 +342,7 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 | `signup_limit`, `signup_window` | `5`, `3600` | inscriptions par IP, sur cette durée (secondes) |
 | `login_path`, `signup_path` | `"/login"`, `"/signup"` | si on les change, déclarer les routes de comptes à la main |
 
-Trois variables d'environnement l'emportent sur la configuration : `CSERVER_PORT`, `CSERVER_DB` et `CSERVER_USER`. Les tests s'en servent pour tourner sur un autre port, avec une base jetable.
+Des variables d'environnement l'emportent sur la configuration : `CSERVER_PORT`, `CSERVER_HOST`, `CSERVER_DB`, `CSERVER_USER` et `CSERVER_PROXY`. Les tests s'en servent pour tourner sur un autre port, avec une base jetable.
 
 Une configuration incohérente est refusée au démarrage, avec un message : `CS_AUTH_ROUTES` sans `.accounts = 1`, des routes de comptes qui ne correspondent pas à `login_path`, des longueurs impossibles.
 
@@ -407,11 +409,27 @@ Chaque cible tourne `FUZZ_TIME` secondes (60 par défaut : `make fuzz FUZZ_TIME=
 
 - **Sans Docker** : lancer `./server` avec un utilisateur créé pour lui (`sudo useradd --system cserver`). S'il faut le lancer en root, par exemple pour ouvrir le port 80, `.user = "cserver"` (ou `CSERVER_USER=cserver`) lui fait prendre cet utilisateur juste après l'ouverture du port, avant d'ouvrir la base. Sans cela, il démarre quand même mais affiche un avertissement.
 
-Pour le HTTPS, placer un proxy devant (Caddy obtient les certificats tout seul) : `mon-site.fr { reverse_proxy localhost:8080 }`.
+**HTTPS, avec un proxy.** cserver ne parle que HTTP. Un proxy placé devant reçoit les visiteurs en HTTPS et lui transmet leurs requêtes. Le dépôt en contient un prêt à l'emploi, avec [Caddy](https://caddyserver.com) qui obtient et renouvelle les certificats tout seul :
+
+```sh
+DOMAIN=mon-site.fr docker compose up -d --build                          # le projet
+DOMAIN=mon-site.fr DIR=examples/guestbook docker compose up -d --build   # un exemple
+```
+
+Le domaine doit pointer vers la machine, avec les ports 80 et 443 ouverts. Sans `DOMAIN`, le site est sur `https://localhost` avec un certificat local, pour essayer. Les réglages sont dans [`compose.yaml`](../compose.yaml) et [`Caddyfile`](../Caddyfile).
+
+Derrière un proxy, toutes les connexions viennent de lui : sans réglage, les limites par adresse (connexions, inscriptions, `cs_rate_limit`) compteraient tous les visiteurs ensemble. Avec **`trusted_proxy`** (ou `CSERVER_PROXY`), le serveur croit ce que le proxy lui dit :
+
+- `X-Forwarded-For` : l'adresse du visiteur, dans `c->req.ip` (les journaux et les limites l'utilisent) ;
+- `X-Forwarded-Proto: https` : `c->req.https` vaut 1, et les cookies prennent l'option `Secure` (jamais envoyés en clair).
+
+Ces en-têtes ne sont crus que si la connexion vient d'une adresse de `trusted_proxy` : venant de n'importe qui d'autre, ils sont ignorés, sinon chacun pourrait changer d'adresse à volonté. Le `compose.yaml` règle tout cela.
+
+Sans Docker, avec Caddy installé sur la machine : `.host = "127.0.0.1"` (le site n'est joignable que par le proxy), `.trusted_proxy = "127.0.0.1"`, et dans le `Caddyfile` : `mon-site.fr { reverse_proxy localhost:8080 }`.
 
 ## Limites connues
 
-- **Pas de HTTPS** : à placer derrière un proxy (Caddy, nginx) pour une mise en ligne, et le cookie n'a pas l'option `Secure`.
+- **Pas de HTTPS intégré** : il passe par un proxy (voir [Mise en ligne](#mise-en-ligne)). IPv4 seulement pour l'écoute et `trusted_proxy`.
 - **Un processus par requête** (`fork`) : simple et robuste (un plantage ne touche qu'une requête), mais pas fait pour des milliers de visiteurs simultanés. Leur nombre est plafonné par `max_connections`, et chaque requête est bornée dans le temps (`read_timeout`, `request_timeout`) : un client qui envoie sa requête goutte à goutte, ou un handler qui ne finit pas, ne bloquent pas le serveur.
 - **SQLite uniquement**, une base par site.
 - **HTTP/1.1, sans HTTP/2** : une connexion sert plusieurs requêtes à la suite (100 au plus), les requêtes envoyées d'un coup sont toutes lues, les corps en morceaux (`chunked`) sont acceptés, `HEAD` et `Expect: 100-continue` sont gérés. Une connexion gardée ouverte occupe un processus jusqu'à `keepalive_timeout` : c'est ce que plafonne `max_connections`.

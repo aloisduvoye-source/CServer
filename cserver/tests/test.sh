@@ -301,4 +301,57 @@ n=$(grep -c "^migration appliquée" "$DBDIR/server2.log")
 check_contains "bonjour jean" /prive -b "$JEAN"                 # la session a survécu
 [ "$(curl -s "$BASE/notes")" = "20" ] && pass "redémarrage : données conservées" || fail "redémarrage : données perdues"
 
+# --------------------------------------------------------------- derrière un proxy
+# sans trusted_proxy : X-Forwarded-For est ignoré (sinon chacun choisirait son adresse)
+check_contains "ip=127.0.0.1 https=0" /ip -H "X-Forwarded-For: 6.6.6.6" -H "X-Forwarded-Proto: https"
+
+# 127.0.0.1 joue le proxy de confiance
+export CSERVER_PROXY="10.0.0.0/8, 127.0.0.1"
+restart_server "$DBDIR/server3.log"
+grep -q "proxy de confiance : 10.0.0.0/8, 127.0.0.1" "$DBDIR/server3.log" && pass "proxy annoncé au démarrage" || fail "proxy non annoncé"
+check_contains "ip=127.0.0.1 https=0" /ip                                       # sans en-tête : le proxy lui-même
+check_contains "ip=203.0.113.7 https=0" /ip -H "X-Forwarded-For: 203.0.113.7"
+check_contains "ip=203.0.113.7 https=1" /ip -H "X-Forwarded-For: 203.0.113.7" -H "X-Forwarded-Proto: https"
+check_contains "ip=2001:db8::1 https=0" /ip -H "X-Forwarded-For: 2001:db8::1"
+# le visiteur a écrit le début, le proxy a ajouté la vraie adresse à la fin
+check_contains "ip=203.0.113.7 " /ip -H "X-Forwarded-For: 6.6.6.6, 203.0.113.7"
+check_contains "ip=203.0.113.7 " /ip -H "X-Forwarded-For: 6.6.6.6" -H "X-Forwarded-For: 203.0.113.7"
+check_contains "ip=127.0.0.1 "   /ip -H "X-Forwarded-For: pas-une-adresse"     # invalide : ignoré
+check_contains "ip=127.0.0.1 "   /ip -H "X-Forwarded-For: 1.2.3.4<script>"
+check_contains "https=0" /ip -H "X-Forwarded-Proto: httpsx"
+grep -q "\] 203.0.113.7 GET /ip" "$DBDIR/server3.log" && pass "le journal montre l'adresse du visiteur" || fail "journal : adresse du proxy"
+
+# les limites comptent par visiteur : 127.0.0.1 est bloqué (login_attempts), pas lui
+check 429 POST /connexion --data-binary "name=jean&password=motdepasse1"
+H="$DBDIR/https.headers"
+curl -s -o /dev/null -D "$H" -H "X-Forwarded-For: 198.51.100.4" -H "X-Forwarded-Proto: https" \
+	--data-binary "name=jean&password=motdepasse1" "$BASE/connexion"
+grep -q "^HTTP/1.1 303" "$H" && pass "un autre visiteur derrière le proxy peut se connecter" || fail "visiteur bloqué à cause du proxy"
+n=$(grep -c "^Set-Cookie:.*; Secure" "$H")
+[ "$n" -eq 2 ] && pass "en HTTPS : cookies de session et CSRF en Secure" || fail "en HTTPS : $n cookie(s) Secure (attendu 2)"
+curl -s -o /dev/null -D "$H" -H "X-Forwarded-For: 198.51.100.4" --data-binary "name=jean&password=motdepasse1" "$BASE/connexion"
+grep -q "^Set-Cookie:.*Secure" "$H" && fail "en HTTP : cookie Secure" || pass "en HTTP : cookies sans Secure"
+
+# un proxy qui n'est pas celui de la connexion : en-têtes ignorés
+export CSERVER_PROXY="10.0.0.0/8"
+restart_server "$DBDIR/server4.log"
+check_contains "ip=127.0.0.1 https=0" /ip -H "X-Forwarded-For: 203.0.113.7" -H "X-Forwarded-Proto: https"
+
+# host : écoute sur une seule adresse
+export CSERVER_HOST=127.0.0.1
+unset CSERVER_PROXY
+restart_server "$DBDIR/server5.log"
+grep -q "listening on 127.0.0.1:$PORT" "$DBDIR/server5.log" && pass "host = 127.0.0.1" || fail "host non appliqué"
+check 200 GET /hello.txt
+unset CSERVER_HOST
+
+# configuration invalide : refusée au démarrage
+for bad in "CSERVER_PROXY=10.0.0.0/33" "CSERVER_PROXY=localhost" "CSERVER_PROXY=1.2.3.4/" "CSERVER_HOST=0.0.0.0.0"; do
+	if env "$bad" CSERVER_PORT=$((PORT + 1)) CSERVER_DB="$DBDIR/x.db" ./server > "$TMP" 2>&1; then
+		fail "$bad accepté"
+	else
+		grep -q "invalide" "$TMP" && pass "$bad refusé" || fail "$bad : pas de message"
+	fi
+done
+
 cs_finish

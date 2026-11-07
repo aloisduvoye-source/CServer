@@ -115,6 +115,11 @@ int auth_lookup_user(cs_ctx *c, cs_user *user){
 	return db != NULL && db_session_user(db, token, (long)time(NULL), user) == 1;
 }
 
+// l'option Secure des cookies, si le visiteur est en HTTPS
+static const char *secure(const cs_ctx *c){
+	return c->req.https ? "; Secure" : "";
+}
+
 int cs_session_start(cs_ctx *c, long user_id){
 	char token[TOKEN_HEX + 1];
 	long expires = (long)time(NULL) + SESSION_SECONDS;
@@ -125,10 +130,11 @@ int cs_session_start(cs_ctx *c, long user_id){
 
 	// HttpOnly : invisible pour le JavaScript (une faille XSS ne peut pas le voler)
 	// SameSite=Lax : pas envoyé avec les formulaires d'autres sites (CSRF)
-	// pas de Secure : il obligerait le HTTPS, que ce serveur n'a pas
+	// Secure : envoyé seulement en HTTPS. Possible quand le proxy dit que le visiteur
+	// y est ; en HTTP simple (en local), le navigateur refuserait de garder le cookie
 	char cookie[256];
-	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-		cs_config.cookie_name, token, SESSION_SECONDS);
+	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s",
+		cs_config.cookie_name, token, SESSION_SECONDS, secure(c));
 	cs_header(c, cookie);
 
 	// un nouveau jeton CSRF à chaque connexion : celui d'avant (peut-être vu par
@@ -150,8 +156,8 @@ void cs_session_end(cs_ctx *c){
 
 	// Max-Age=0 : le navigateur efface le cookie
 	char cookie[128];
-	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
-		cs_config.cookie_name);
+	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax%s",
+		cs_config.cookie_name, secure(c));
 	cs_header(c, cookie);
 	c->user_state = -1;
 }
@@ -172,8 +178,8 @@ int csrf_new(cs_ctx *c){
 	char name[96];
 	char cookie[256];
 	csrf_cookie_name(name, sizeof(name));
-	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-		name, c->csrf, SESSION_SECONDS);
+	snprintf(cookie, sizeof(cookie), "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s",
+		name, c->csrf, SESSION_SECONDS, secure(c));
 	cs_header(c, cookie);
 	return 0;
 }

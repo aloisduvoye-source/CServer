@@ -14,7 +14,9 @@ typedef struct {
 	char   path[256];     // sans la query, déjà décodé (%20 -> ' ')
 	char   query[512];    // ce qui suit le "?", brut : lire avec cs_query()
 	char   cookie[4096];  // en-tête Cookie brut : lire avec cs_cookie()
-	char   ip[46];        // adresse du client
+	char   ip[46];        // adresse du client (derrière un proxy de confiance : celle
+	                      // du visiteur, donnée par le proxy ; voir trusted_proxy)
+	int    https;         // 1 si le visiteur est en HTTPS (dit par le proxy de confiance)
 	char   csrf[72];      // en-tête X-CSRF-Token (voir cs_csrf_token)
 	char  *body;          // corps (POST), terminé par '\0' : lire avec cs_form()
 	size_t body_len;
@@ -268,6 +270,13 @@ typedef struct {
 typedef struct {
 	const char     *name;          // nom du site, affiché dans le <title>      défaut : "cserver"
 	int             port;          // port d'écoute ; CSERVER_PORT l'emporte    défaut : 8080
+	const char     *host;          // adresse d'écoute : "127.0.0.1" pour n'être joignable
+	                               // que depuis la machine (derrière un proxy) ;
+	                               // CSERVER_HOST l'emporte              défaut : toutes
+	const char     *trusted_proxy; // adresses du proxy (Caddy, nginx), ex : "127.0.0.1"
+	                               // ou "10.0.0.0/8, 127.0.0.1" : on croit leurs en-têtes
+	                               // X-Forwarded-For et -Proto ; CSERVER_PROXY l'emporte
+	                               //                                     défaut : aucune
 	const char     *user;          // lancé en root (pour le port 80...) : passer à cet
 	                               // utilisateur une fois le port ouvert ;
 	                               // CSERVER_USER l'emporte                    défaut : aucun

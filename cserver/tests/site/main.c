@@ -169,6 +169,13 @@ static void headers(cs_ctx *c){
 	send_text(c, "entetes");
 }
 
+// GET /ip : l'adresse retenue pour le visiteur, et s'il est en HTTPS (trusted_proxy)
+static void client_ip(cs_ctx *c){
+	char out[96];
+	snprintf(out, sizeof(out), "ip=%s https=%d", c->req.ip, c->req.https);
+	send_text(c, out);
+}
+
 // GET /hash?p=... : cs_password_hash puis cs_password_verify
 static void hash(cs_ctx *c){
 	char p[64], h[CS_HASH_MAX];
@@ -186,6 +193,7 @@ static const cs_route routes[] = {
 	CS_POST("/api/logout", api_logout),
 	CS_GET ("/entete",     headers),
 	CS_GET ("/hash",       hash),
+	CS_GET ("/ip",         client_ip),
 	CS_PAGE("/", "index.html", "accueil"),
 	CS_PAGE("/sous", "sous/dossier/page.html", "sous"),
 	CS_GET ("/echo",       echo),

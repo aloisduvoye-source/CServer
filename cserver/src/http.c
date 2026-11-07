@@ -8,6 +8,7 @@
 #include<time.h>
 #include<sys/socket.h>
 #include<sys/time.h>
+#include<arpa/inet.h>
 #include"internal.h"
 
 #define MAX_BODY       (1024 * 1024)   // 1 Mo
@@ -81,6 +82,42 @@ static const char *find_header(const char *head, const char *name){
 	return NULL;
 }
 
+// comme find_header, mais la dernière occurrence : un proxy ajoute la sienne à la
+// fin, et celles d'avant ont pu être écrites par le visiteur
+static const char *find_last_header(const char *head, const char *name){
+	const char *last = NULL;
+	for (const char *v = find_header(head, name); v != NULL; v = find_header(v, name)){
+		last = v;
+	}
+	return last;
+}
+
+// X-Forwarded-For: "visiteur, proxy1, proxy2" : chaque proxy ajoute à la fin l'adresse
+// de qui lui parle. Le dernier élément est celui de notre proxy, le seul fiable.
+static void forwarded_for(const char *head, char *out, size_t size){
+	out[0] = '\0';
+	const char *v = find_last_header(head, "X-Forwarded-For");
+	if (v == NULL){return;}
+	size_t len = strcspn(v, "\r");
+	const char *start = v;
+	for (size_t i = 0; i < len; i++){
+		if (v[i] == ','){start = v + i + 1;}
+	}
+	len -= (size_t)(start - v);
+	while (len > 0 && (*start == ' ' || *start == '\t')){start++; len--;}
+	while (len > 0 && (start[len-1] == ' ' || start[len-1] == '\t')){len--;}
+	if (len == 0 || len >= size){return;}
+
+	char ip[64];
+	memcpy(ip, start, len);
+	ip[len] = '\0';
+	// une vraie adresse, rien d'autre : elle finit dans les journaux et dans la base
+	unsigned char bin[16];
+	if (inet_pton(AF_INET, ip, bin) == 1 || inet_pton(AF_INET6, ip, bin) == 1){
+		memcpy(out, ip, len + 1);
+	}
+}
+
 // la valeur de l'en-tête `name`, en minuscules, sans les espaces de fin ("" si absent)
 static void header_lower(const char *head, const char *name, char *out, size_t size){
 	const char *v = find_header(head, name);
@@ -101,6 +138,8 @@ typedef struct {
 	int  chunked;      // Transfer-Encoding: chunked
 	int  expect;       // Expect: 100-continue
 	int  keep_alive;   // la connexion peut servir à la requête suivante
+	char fwd_ip[46];   // X-Forwarded-For (dernier élément), "" si absent
+	int  fwd_https;    // X-Forwarded-Proto: https
 } head_info;
 
 // analyse les en-têtes (head : terminés par '\0', sans la ligne vide finale)
@@ -161,6 +200,12 @@ static int parse_head(char *head, cs_request *req, head_info *info){
 	info->keep_alive = http11;
 	if (strstr(value, "close") != NULL){info->keep_alive = 0;}
 	else if (strstr(value, "keep-alive") != NULL){info->keep_alive = 1;}
+
+	// ce que dit un éventuel proxy (cru seulement s'il est de confiance, voir server.c)
+	forwarded_for(head, info->fwd_ip, sizeof(info->fwd_ip));
+	const char *proto = find_last_header(head, "X-Forwarded-Proto");
+	info->fwd_https = proto != NULL && strncasecmp(proto, "https", 5) == 0
+	               && strchr("\r \t", proto[5]) != NULL;
 
 	header_lower(head, "Expect", value, sizeof(value));
 	info->expect = strcmp(value, "100-continue") == 0;
@@ -366,8 +411,12 @@ int http_parse(http_conn *conn, cs_request *req, int idle_timeout, int read_time
 
 	// 2. les en-têtes
 	head_info info;
+	conn->fwd_ip[0] = '\0';
+	conn->fwd_https = 0;
 	int status = parse_head(head, req, &info);
 	if (status != 0){return status;}
+	memcpy(conn->fwd_ip, info.fwd_ip, sizeof(conn->fwd_ip));
+	conn->fwd_https = info.fwd_https;
 
 	// 3. le corps. Avec "Expect: 100-continue", le client attend notre accord avant
 	//    de l'envoyer (curl le fait pour les gros envois)
