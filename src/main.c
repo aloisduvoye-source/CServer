@@ -16,11 +16,18 @@ static void handle_client(int client){
 	setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
 	Request req;
-	if (http_parse(client, &req) < 0){
+	int r = http_parse(client, &req);
+	if (r == -1){
+		return;
+	}
+	if (r == -2){
+		const char *body = "<h1>400 Bad Request</h1>\n";
+		send_response(client, 400, "text/html", body, strlen(body));
 		return;
 	}
 
-	printf("[pid %d] %s %s\n", getpid(), req.method, req.path);
+	printf("[pid %d] %s %s%s%s\n", getpid(), req.method, req.path,
+		req.query[0] ? "?" : "", req.query);
 	route(client, &req);
 }
 

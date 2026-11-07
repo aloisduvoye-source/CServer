@@ -2,6 +2,7 @@
 #include<string.h>
 #include<unistd.h>
 #include"http.h"
+#include"util.h"
 
 static const char *status_text(int status){
 	switch (status){
@@ -27,18 +28,21 @@ int http_parse(int client, Request *req){
 
 	char target[1024];
 	if (sscanf(buffer, "%7s %1023s", req->method, target) != 2){
-		return -1;
+		return -2;
 	}
 
 	// "/chemin?query" -> path = "/chemin", query = "query"
 	char *q = strchr(target, '?');
 	if (q != NULL){
 		*q = '\0';
-		if (strlen(q+1) >= sizeof(req->query)){return -1;}
+		if (strlen(q+1) >= sizeof(req->query)){return -2;}
 		strcpy(req->query, q+1);
 	}
-	if (strlen(target) >= sizeof(req->path)){return -1;}
-	strcpy(req->path, target);
+
+	// dans un chemin, '+' reste un '+' (seule la query l'utilise pour l'espace)
+	if (url_decode(target, strlen(target), req->path, sizeof(req->path), 0) < 0){
+		return -2;
+	}
 
 	return 0;
 }

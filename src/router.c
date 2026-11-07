@@ -1,7 +1,9 @@
+#include<stdio.h>
 #include<string.h>
 #include<time.h>
 #include"router.h"
 #include"static.h"
+#include"util.h"
 
 typedef void (*Handler)(int client, Request *req);
 
@@ -20,9 +22,22 @@ static void api_heure(int client, Request *req){
 	send_response(client, 200, "text/plain", body, len);
 }
 
+// exemple : /api/bonjour?nom=Jean+Dupont -> "Bonjour Jean Dupont"
+static void api_bonjour(int client, Request *req){
+	char nom[128];
+	if (query_get(req->query, "nom", nom, sizeof(nom)) < 0 || nom[0] == '\0'){
+		strcpy(nom, "inconnu");
+	}
+
+	char body[256];
+	int len = snprintf(body, sizeof(body), "Bonjour %s\n", nom);
+	send_response(client, 200, "text/plain; charset=utf-8", body, len);
+}
+
 // ajouter une page = ajouter une ligne ici
 static Route routes[] = {
-	{ "GET", "/api/heure", api_heure },
+	{ "GET", "/api/heure",   api_heure },
+	{ "GET", "/api/bonjour", api_bonjour },
 };
 
 void route(int client, Request *req){
