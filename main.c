@@ -15,6 +15,9 @@ char* content_type(char* filename){
 	if (strcmp(dot, ".png") == 0){return "image/png";}
 	if (strcmp(dot, ".jpg") == 0){return "image/jpeg";}
 	if (strcmp(dot, ".webp") == 0){return "image/webp";}
+	if (strcmp(dot, ".js") == 0){return "text/javascript";}
+	if (strcmp(dot, ".svg") == 0){return "image/svg+xml";}
+	if (strcmp(dot, ".ico") == 0){return "image/x-icon";}
 
 	return "text/plain";
 }
