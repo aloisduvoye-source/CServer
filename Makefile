@@ -12,8 +12,11 @@ LIB_GEN = cserver/build/migrations.o cserver/build/templates.o
 LIB_OBJ = $(LIB_SRC:cserver/src/%.c=cserver/build/%.o) $(LIB_GEN)
 LIB_HDR = $(wildcard cserver/include/*.h cserver/src/*.h)
 
-# le site (un dossier par site dans examples/)
-APP     = examples/guestbook
+# le site : un dossier par site dans examples/ ; on choisit avec SITE=...
+#   make SITE=todo run
+SITE   ?= guestbook
+SITES   = $(notdir $(wildcard examples/*))
+APP     = examples/$(SITE)
 APP_SRC = $(wildcard $(APP)/*.c)
 APP_SQL = $(sort $(wildcard $(APP)/migrations/*.sql))
 APP_HDR = $(wildcard $(APP)/*.h)
@@ -62,10 +65,17 @@ run: $(APP)/server
 test: $(APP)/server
 	$(APP)/test.sh
 
+# tous les sites d'un coup
+all:
+	@for s in $(SITES); do $(MAKE) -s SITE=$$s || exit 1; done
+
+test-all:
+	@for s in $(SITES); do echo "== $$s"; $(MAKE) -s SITE=$$s test || exit 1; done
+
 clean:
-	rm -rf cserver/build $(LIB) $(APP)/server $(APP)/build
+	rm -rf cserver/build $(LIB) $(SITES:%=examples/%/server) $(SITES:%=examples/%/build)
 
 # si une commande échoue, on ne garde pas un fichier généré à moitié
 .DELETE_ON_ERROR:
 
-.PHONY: run test clean
+.PHONY: run test all test-all clean

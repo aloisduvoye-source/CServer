@@ -6,7 +6,7 @@ cd "$(dirname "$0")" || exit 1   # le serveur cherche www/ dans le dossier coura
 PORT=${PORT:-8081}
 BASE="localhost:$PORT"
 
-make -s -C ../.. || exit 1
+make -s -C ../.. SITE="$(basename "$PWD")" || exit 1
 
 # base jetable : les tests ne touchent pas à data/site.db
 DBDIR=$(mktemp -d)
