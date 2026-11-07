@@ -61,3 +61,30 @@ int query_get(const char *query, const char *key, char *out, size_t out_size){
 
 	return -1;
 }
+
+int html_escape(const char *src, char *dst, size_t dst_size){
+	if (dst_size == 0){return -1;}
+
+	size_t j = 0;
+	for (size_t i = 0; src[i] != '\0'; i++){
+		char one[2] = { src[i], '\0' };
+		const char *rep;
+
+		switch (src[i]){
+			case '<':  rep = "&lt;";   break;
+			case '>':  rep = "&gt;";   break;
+			case '&':  rep = "&amp;";  break;
+			case '"':  rep = "&quot;"; break;
+			case '\'': rep = "&#39;";  break;
+			default:   rep = one;      break;
+		}
+
+		size_t len = strlen(rep);
+		if (j + len >= dst_size){return -1;}   // garder la place du '\0'
+		memcpy(dst + j, rep, len);
+		j += len;
+	}
+
+	dst[j] = '\0';
+	return (int)j;
+}

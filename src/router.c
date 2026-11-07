@@ -40,6 +40,27 @@ static void api_bonjour(int client, Request *req){
 	send_response(client, 200, "text/plain; charset=utf-8", body, len);
 }
 
+// exemple HTML : /bonjour?nom=<b>x</b> affiche "<b>x</b>" comme du texte
+static void page_bonjour(int client, Request *req){
+	char nom[128];
+	if (query_get(req->query, "nom", nom, sizeof(nom)) < 0 || nom[0] == '\0'){
+		strcpy(nom, "inconnu");
+	}
+
+	// TOUJOURS échapper ce qui vient de l'extérieur avant de le mettre dans du HTML
+	char nom_html[HTML_ESCAPE_MAX(sizeof(nom))];
+	html_escape(nom, nom_html, sizeof(nom_html));   // ne peut pas échouer : buffer assez grand
+
+	char body[1024];
+	int len = snprintf(body, sizeof(body),
+		"<!doctype html>\n"
+		"<meta charset=\"utf-8\">\n"
+		"<h1>Bonjour %s</h1>\n",
+		nom_html
+	);
+	send_response(client, 200, "text/html; charset=utf-8", body, len);
+}
+
 // exemple SQLite : compteur partagé par tous les processus enfants
 // (une variable globale ne marcherait pas : chaque enfant a sa propre copie)
 static void api_visites(int client, Request *req){
@@ -64,6 +85,7 @@ static Route routes[] = {
 	{ "GET",  "/api/visites", api_visites },
 	{ "GET",  "/api/bonjour", api_bonjour },
 	{ "POST", "/api/bonjour", api_bonjour },
+	{ "GET",  "/bonjour",     page_bonjour },
 };
 
 void route(int client, Request *req){

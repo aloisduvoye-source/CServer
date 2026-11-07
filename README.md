@@ -24,7 +24,7 @@ Objectif : un livre d'or (formulaire + liste des messages).
 - [x] Paramètres d'URL (`?q=...`, décodage `%XX`)
 - [x] Requêtes POST (lecture selon `Content-Length`)
 - [x] Base de données SQLite
-- [ ] Échappement HTML (XSS)
+- [x] Échappement HTML (XSS)
 - [ ] Livre d'or (enregistrer et afficher les messages)
 - [ ] API JSON
 - [ ] Sessions et cookies

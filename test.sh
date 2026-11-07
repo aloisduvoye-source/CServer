@@ -31,6 +31,15 @@ check() { # check <code attendu> <méthode> <chemin> [options curl...]
 	fi
 }
 
+check_contains() { # check_contains <texte attendu> <chemin>
+	if curl -s --path-as-is "localhost:8080$2" | grep -qF -- "$1"; then
+		echo "ok     GET $2 contient $1"
+	else
+		echo "ECHEC  GET $2 ne contient pas $1"
+		FAIL=1
+	fi
+}
+
 check_post() { # check_post <corps attendu> <chemin> <données>
 	got=$(curl -s --data-binary "$3" "localhost:8080$2")
 	if [ "$got" = "$1" ]; then
@@ -85,6 +94,14 @@ check 400 POST /api/bonjour -H "Content-Length: abc"
 check 400 POST /api/bonjour -H "Content-Length: -5"
 head -c 2000000 /dev/zero > "$TMP"
 check 413 POST /api/bonjour --data-binary @"$TMP"                 # > 1 Mo
+
+# échappement HTML
+check_contains "<h1>Bonjour inconnu</h1>" "/bonjour"
+check_contains "<h1>Bonjour Zoé</h1>"     "/bonjour?nom=Zo%C3%A9"
+check_contains "<h1>Bonjour &lt;script&gt;alert(1)&lt;/script&gt;</h1>" \
+               "/bonjour?nom=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+check_contains "<h1>Bonjour Tom &amp; &quot;Jerry&quot; l&#39;ami</h1>" \
+               "/bonjour?nom=Tom+%26+%22Jerry%22+l%27ami"
 
 # SQLite : 20 écritures en parallèle par 20 processus, aucune ne doit se perdre
 check_body "1" /api/visites

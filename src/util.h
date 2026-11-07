@@ -11,4 +11,11 @@ int url_decode(const char *src, size_t src_len, char *dst, size_t dst_size, int 
 // renvoie 0 si trouvée, -1 sinon
 int query_get(const char *query, const char *key, char *out, size_t out_size);
 
+// remplace < > & " ' par leurs entités HTML (&lt; &gt; ...)
+// renvoie la longueur écrite, ou -1 si dst est trop petit
+int html_escape(const char *src, char *dst, size_t dst_size);
+
+// taille de buffer suffisante pour échapper n octets (pire cas : " -> &quot;, x6)
+#define HTML_ESCAPE_MAX(n) ((n) * 6 + 1)
+
 #endif
