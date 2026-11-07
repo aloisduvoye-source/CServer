@@ -72,6 +72,16 @@ int main(void){
 		}
 
 		printf("%s %s\n", method, path);
+		if (strstr(path, ".." != NULL)){
+			char *response=
+				"HTTP/1.0 404 not found\r\n"
+				"Content-Type: text/html\r\n"
+				"\r\n"
+				"<h1>404 dumbass<h1>\n";
+			write(client, response, strlen(response));
+			close(client);
+			continue;
+		}
 
 		char filename[512];
 		snprintf(
@@ -83,12 +93,13 @@ int main(void){
 
 		struct stat info;
 		int file = -1;
+
 		if (stat(filename,&info) < 0 || !S_ISREG(info.st_mode) || (file  = open(filename, O_RDONLY)) < 0) {
 			char *response=
-			"HTTP/1.0 404 not found\r\n"
-			"Content-Type: text/html\r\n"
-			"\r\n"
-			"<h1>404 dumbass<h1>\n";
+				"HTTP/1.0 404 not found\r\n"
+				"Content-Type: text/html\r\n"
+				"\r\n"
+				"<h1>404 dumbass<h1>\n";
 			write(client, response, strlen(response));
 			close(client);
 			continue;
