@@ -1,0 +1,49 @@
+/* style commun à toutes les pages */
+
+body {
+    background: #000;
+    color: #e5e5e5;
+    font-family: monospace;
+    margin: 3rem auto;
+    padding: 0 1rem;
+    max-width: 40rem;
+}
+
+a { color: #e5e5e5; }
+
+nav { display: flex; flex-wrap: wrap; gap: 1rem; align-items: baseline; margin-bottom: 2rem; }
+nav .user { margin-left: auto; display: flex; gap: 1rem; align-items: baseline; }
+
+/* formulaires */
+input, textarea, button {
+    background: #111;
+    color: #e5e5e5;
+    border: 1px solid #444;
+    font: inherit;
+    padding: .4rem;
+}
+textarea { width: 100%; box-sizing: border-box; }
+button { cursor: pointer; }
+button:disabled { opacity: .5; cursor: wait; }
+.error { color: #f66; }
+
+/* bouton d'un formulaire POST qui ressemble à un lien (log out, delete) */
+form.inline { display: inline; }
+button.link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; }
+
+/* messages */
+article { border-top: 1px solid #333; padding: .5rem 0; }
+.meta { color: #888; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* membres et avatars */
+.avatar {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%; object-fit: cover; vertical-align: middle;
+    background: #222; color: #aaa;
+}
+.avatar.small { width: 2rem; height: 2rem; }
+.avatar.large { width: 8rem; height: 8rem; font-size: 3rem; }
+ul.members { list-style: none; padding: 0; }
+ul.members li { display: flex; gap: .75rem; align-items: center; padding: .4rem 0; border-top: 1px solid #333; }
+.ok { color: #6c6; }

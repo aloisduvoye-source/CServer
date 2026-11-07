@@ -1,0 +1,10 @@
+    <h1>members</h1>
+{{#members}}
+    <p class="meta">{{count}} member(s)</p>
+    <ul class="members">
+{{{members}}}
+    </ul>
+{{/members}}
+{{^members}}
+    <p>No members yet. <a href="{{signup_path}}">Be the first!</a></p>
+{{/members}}

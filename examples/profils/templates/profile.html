@@ -1,0 +1,29 @@
+    <h1>my profile</h1>
+{{#done}}
+    <p class="ok">{{done}}</p>
+{{/done}}
+{{#error}}
+    <p class="error">{{error}}</p>
+{{/error}}
+    <p>{{{avatar}}}</p>
+    <p class="meta">{{name}} · member since {{since}} · <a href="/u/{{name}}">public page</a></p>
+
+    <h2>avatar</h2>
+    {{! enctype="multipart/form-data" : obligatoire pour envoyer un fichier }}
+    <form method="post" action="/profile/avatar" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{csrf}}">
+        <p><input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" required>
+        <button>upload</button></p>
+        <p class="meta">PNG, JPEG, GIF or WebP, {{avatar_max_kb}} KB max</p>
+    </form>
+{{#has_avatar}}
+    <form method="post" action="/profile/avatar/delete"><input type="hidden" name="csrf" value="{{csrf}}">
+        <p><button class="link">remove my avatar</button></p>
+    </form>
+{{/has_avatar}}
+
+    <h2>email</h2>
+    <p class="meta">private: only you can see it</p>
+    <form method="post" action="/profile/email"><input type="hidden" name="csrf" value="{{csrf}}">
+        <p><input type="email" name="email" value="{{email}}" maxlength="254" autocomplete="email" required>
+        <button>save</button></p>
+    </form>

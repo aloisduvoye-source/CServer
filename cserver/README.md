@@ -174,7 +174,7 @@ Un handler reçoit le contexte de la requête, `cs_ctx *c`, et doit envoyer **ex
 | Fonction | Lit |
 |---|---|
 | `cs_query(c, "q", buf, size)` | `?q=...` dans l'URL |
-| `cs_form(c, "name", buf, size)` | un champ d'un formulaire POST |
+| `cs_form(c, "name", buf, size)` | un champ d'un formulaire POST (classique ou `multipart/form-data`) |
 | `cs_param(c, "id", buf, size)` | un segment `:id` de la route |
 | `cs_param_id(c, "id")` | le même, comme entier > 0 (sinon `-1`) |
 | `cs_cookie(c, "x", buf, size)` | un cookie |
@@ -191,6 +191,17 @@ Un handler reçoit le contexte de la requête, `cs_ctx *c`, et doit envoyer **ex
 | `cs_send(c, 200, "text/plain", body, len)` | n'importe quoi |
 | `cs_redirect(c, "/todos")` | une redirection 303 |
 | `cs_error(c, 404)` | une page d'erreur minimale |
+
+**Fichiers envoyés** — un formulaire avec `<input type="file">` doit être en `enctype="multipart/form-data"`. `cs_form` y lit les champs texte, dont le jeton CSRF, et `cs_form_file` le fichier :
+
+```c
+cs_file f;
+if (cs_form_file(c, "avatar", &f) < 0){ ... }        // aucun fichier choisi
+if (f.len > 256 * 1024){ ... }                         // sa taille : au site de la fixer (au plus 1 Mo, la limite d'une requête)
+const char *type = cs_image_type(f.data, f.len);       // "image/png"... ou NULL
+```
+
+Tout y est choisi par le visiteur : `f.filename` peut valoir `../../etc/passwd` (ne jamais s'en servir comme chemin), et `f.type` peut mentir. `cs_image_type` reconnaît PNG, JPEG, GIF et WebP à leurs premiers octets, et refuse le reste, SVG compris (il peut contenir du JavaScript). Chaque réponse porte `X-Content-Type-Options: nosniff` : le navigateur s'en tient au type annoncé, et un faux PNG rempli de HTML n'est jamais affiché comme une page. Exemple complet : [`examples/profils`](../examples/profils/), où les avatars sont stockés dans la base.
 
 `cs_header(c, "Cache-Control: no-store")` ajoute un en-tête à la réponse qui va partir (refusé s'il contient un retour à la ligne).
 

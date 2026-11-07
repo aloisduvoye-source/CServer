@@ -14,7 +14,7 @@ make run          # le lance, puis ouvrir http://localhost:8080
 | Commande | Effet |
 |---|---|
 | `make run`, `make test` | ton projet (à la racine) |
-| `make run DIR=examples/guestbook` | un exemple : `examples/guestbook` (livre d'or, comptes, API JSON) ou `examples/todo` (liste de tâches) |
+| `make run DIR=examples/guestbook` | un exemple : `examples/guestbook` (livre d'or, comptes, API JSON), `examples/todo` (liste de tâches) ou `examples/profils` (membres avec e-mail et avatar) |
 | `make new ../autre-site` | un projet à part, avec sa propre copie du framework |
 | `make test-all` | les tests du framework, des exemples et de ton projet |
 | `make fuzz` | le fuzzing du framework (demande clang) |
