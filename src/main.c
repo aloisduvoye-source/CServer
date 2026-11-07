@@ -8,6 +8,7 @@
 #include<netinet/in.h>
 #include"http.h"
 #include"router.h"
+#include"db.h"
 
 static void handle_client(int client){
 
@@ -55,6 +56,10 @@ int main(void){
 
 	if (listen(server,10) < 0){
 		perror("listen");
+		exit(1);
+	}
+
+	if (db_init() < 0){
 		exit(1);
 	}
 

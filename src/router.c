@@ -4,6 +4,7 @@
 #include"router.h"
 #include"static.h"
 #include"util.h"
+#include"db.h"
 
 typedef void (*Handler)(int client, Request *req);
 
@@ -39,9 +40,28 @@ static void api_bonjour(int client, Request *req){
 	send_response(client, 200, "text/plain; charset=utf-8", body, len);
 }
 
+// exemple SQLite : compteur partagé par tous les processus enfants
+// (une variable globale ne marcherait pas : chaque enfant a sa propre copie)
+static void api_visites(int client, Request *req){
+	(void)req;
+	sqlite3 *db = db_open();
+	long n = (db != NULL) ? db_counter_incr(db, "visites") : -1;
+	sqlite3_close(db);
+
+	if (n < 0){
+		send_error(client, 500);
+		return;
+	}
+
+	char body[32];
+	int len = snprintf(body, sizeof(body), "%ld\n", n);
+	send_response(client, 200, "text/plain", body, len);
+}
+
 // ajouter une page = ajouter une ligne ici
 static Route routes[] = {
 	{ "GET",  "/api/heure",   api_heure },
+	{ "GET",  "/api/visites", api_visites },
 	{ "GET",  "/api/bonjour", api_bonjour },
 	{ "POST", "/api/bonjour", api_bonjour },
 };

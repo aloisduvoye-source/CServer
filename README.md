@@ -1,10 +1,11 @@
 # CServer
 
-Serveur HTTP en C, tout à la main (aucune bibliothèque externe).
+Serveur HTTP en C, tout à la main (seule bibliothèque : SQLite).
 
 ## Compiler et lancer
 
 ```sh
+sudo apt install libsqlite3-dev   # une seule fois
 make
 ./server
 ```
@@ -22,7 +23,8 @@ Objectif : un livre d'or (formulaire + liste des messages).
 - [x] Routes dynamiques
 - [x] Paramètres d'URL (`?q=...`, décodage `%XX`)
 - [x] Requêtes POST (lecture selon `Content-Length`)
-- [ ] Stockage dans des fichiers
+- [x] Base de données SQLite
 - [ ] Échappement HTML (XSS)
+- [ ] Livre d'or (enregistrer et afficher les messages)
 - [ ] API JSON
 - [ ] Sessions et cookies

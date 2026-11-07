@@ -2,10 +2,13 @@
 # Compile, lance le serveur, vérifie quelques réponses, puis l'arrête.
 
 make -s || exit 1
-./server > /dev/null &
+
+# base jetable : les tests ne touchent pas à data/site.db
+DBDIR=$(mktemp -d)
+CSERVER_DB="$DBDIR/test.db" ./server > /dev/null &
 PID=$!
 TMP=$(mktemp)
-trap 'kill $PID 2>/dev/null; rm -f "$TMP"' EXIT
+trap 'kill $PID 2>/dev/null; rm -rf "$TMP" "$DBDIR"' EXIT
 
 for i in $(seq 50); do
 	curl -s -o /dev/null localhost:8080/ && break
@@ -82,5 +85,15 @@ check 400 POST /api/bonjour -H "Content-Length: abc"
 check 400 POST /api/bonjour -H "Content-Length: -5"
 head -c 2000000 /dev/zero > "$TMP"
 check 413 POST /api/bonjour --data-binary @"$TMP"                 # > 1 Mo
+
+# SQLite : 20 écritures en parallèle par 20 processus, aucune ne doit se perdre
+check_body "1" /api/visites
+pids=""
+for i in $(seq 20); do
+	curl -s -o /dev/null localhost:8080/api/visites &
+	pids="$pids $!"
+done
+wait $pids
+check_body "22" /api/visites
 
 exit $FAIL
