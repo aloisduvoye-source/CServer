@@ -72,7 +72,7 @@ int main(void){
 		}
 
 		printf("%s %s\n", method, path);
-		if (strstr(path, ".." != NULL)){
+		if (strstr(path, ".." )!= NULL){
 			char *response=
 				"HTTP/1.0 404 not found\r\n"
 				"Content-Type: text/html\r\n"
