@@ -36,6 +36,28 @@ int url_decode(const char *src, size_t src_len, char *dst, size_t dst_size, int 
 	return (int)j;
 }
 
+int utf8_valid(const char *s){
+	const unsigned char *p = (const unsigned char *)s;
+
+	while (*p != '\0'){
+		// le premier octet dit combien d'octets de suite suivent
+		int follow;
+		if      (*p < 0x80)           {follow = 0;}   // 0xxxxxxx : ASCII
+		else if ((*p & 0xE0) == 0xC0) {follow = 1;}   // 110xxxxx
+		else if ((*p & 0xF0) == 0xE0) {follow = 2;}   // 1110xxxx
+		else if ((*p & 0xF8) == 0xF0) {follow = 3;}   // 11110xxx
+		else {return 0;}
+		p++;
+
+		// chaque octet de suite doit être de la forme 10xxxxxx
+		for (int i = 0; i < follow; i++, p++){
+			if ((*p & 0xC0) != 0x80){return 0;}   // arrête aussi sur un '\0' prématuré
+		}
+	}
+
+	return 1;
+}
+
 int query_get(const char *query, const char *key, char *out, size_t out_size){
 	const char *p = query;
 

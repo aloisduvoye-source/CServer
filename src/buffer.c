@@ -59,3 +59,35 @@ void buf_append_html(Buffer *b, const char *s){
 	}
 	b->len += written;
 }
+
+void buf_append_json(Buffer *b, const char *s){
+	static const char hex[] = "0123456789abcdef";
+
+	// pire cas : chaque octet devient \u00XX (6 octets), + les 2 guillemets
+	size_t n = strlen(s);
+	if (buf_reserve(b, n * 6 + 2) < 0){return;}
+
+	char *out = b->data + b->len;
+	*out++ = '"';
+	for (const unsigned char *p = (const unsigned char *)s; *p != '\0'; p++){
+		switch (*p){
+			case '"':  *out++ = '\\'; *out++ = '"';  break;
+			case '\\': *out++ = '\\'; *out++ = '\\'; break;
+			case '\n': *out++ = '\\'; *out++ = 'n';  break;
+			case '\r': *out++ = '\\'; *out++ = 'r';  break;
+			case '\t': *out++ = '\\'; *out++ = 't';  break;
+			default:
+				if (*p < 0x20){   // autres caractères de contrôle : \u00XX
+					*out++ = '\\'; *out++ = 'u'; *out++ = '0'; *out++ = '0';
+					*out++ = hex[*p >> 4];
+					*out++ = hex[*p & 0xF];
+				}
+				else {            // le reste (accents UTF-8 compris) passe tel quel
+					*out++ = *p;
+				}
+		}
+	}
+	*out++ = '"';
+	*out = '\0';
+	b->len = out - b->data;
+}

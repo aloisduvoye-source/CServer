@@ -87,8 +87,10 @@ static Route routes[] = {
 	{ "GET",  "/api/bonjour", api_bonjour },
 	{ "POST", "/api/bonjour", api_bonjour },
 	{ "GET",  "/bonjour",     page_bonjour },
-	{ "GET",  "/guestbook",   guestbook_list },
-	{ "POST", "/guestbook",   guestbook_post },
+	{ "GET",  "/guestbook",    guestbook_list },
+	{ "POST", "/guestbook",    guestbook_post },
+	{ "GET",  "/api/messages", api_messages_list },
+	{ "POST", "/api/messages", api_messages_post },
 };
 
 void route(int client, Request *req){

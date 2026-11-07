@@ -13,6 +13,7 @@
 static const char *status_text(int status){
 	switch (status){
 		case 200: return "OK";
+		case 201: return "Created";
 		case 303: return "See Other";
 		case 400: return "Bad Request";
 		case 404: return "Not Found";

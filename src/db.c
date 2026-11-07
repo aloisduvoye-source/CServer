@@ -89,8 +89,37 @@ long db_counter_incr(sqlite3 *db, const char *name){
 	return value;
 }
 
-int db_message_add(sqlite3 *db, const char *name, const char *message){
-	const char *sql = "INSERT INTO messages (name, message) VALUES (?, ?);";
+// colonnes lues par les deux requêtes ci-dessous, dans cet ordre
+#define MESSAGE_COLUMNS "id, name, message, strftime('%Y-%m-%d %H:%M', created_at, 'localtime')"
+
+// exécute stmt et appelle fn pour chaque ligne ; renvoie le nombre de lignes, -1 si erreur
+static int each_message(sqlite3 *db, sqlite3_stmt *stmt, MessageFn fn, void *ctx){
+	int count = 0;
+	int rc;
+	while ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
+		if (fn != NULL){
+			fn(ctx,
+				(long)sqlite3_column_int64(stmt, 0),
+				(const char *)sqlite3_column_text(stmt, 1),
+				(const char *)sqlite3_column_text(stmt, 2),
+				(const char *)sqlite3_column_text(stmt, 3));
+		}
+		count++;
+	}
+	if (rc != SQLITE_DONE){
+		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+		count = -1;
+	}
+
+	sqlite3_finalize(stmt);
+	return count;
+}
+
+int db_message_add(sqlite3 *db, const char *name, const char *message, MessageFn fn, void *ctx){
+	// RETURNING : SQLite renvoie la ligne créée (avec son id et sa date)
+	const char *sql =
+		"INSERT INTO messages (name, message) VALUES (?, ?) "
+		"RETURNING " MESSAGE_COLUMNS ";";
 
 	sqlite3_stmt *stmt;
 	if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK){
@@ -101,18 +130,12 @@ int db_message_add(sqlite3 *db, const char *name, const char *message){
 	sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
 	sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC);
 
-	int rc = sqlite3_step(stmt);
-	if (rc != SQLITE_DONE){
-		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
-	}
-
-	sqlite3_finalize(stmt);
-	return rc == SQLITE_DONE ? 0 : -1;
+	return each_message(db, stmt, fn, ctx) == 1 ? 0 : -1;
 }
 
 int db_messages_each(sqlite3 *db, int limit, MessageFn fn, void *ctx){
 	const char *sql =
-		"SELECT name, message, strftime('%Y-%m-%d %H:%M', created_at, 'localtime') "
+		"SELECT " MESSAGE_COLUMNS " "
 		"FROM messages ORDER BY id DESC LIMIT ?;";
 
 	sqlite3_stmt *stmt;
@@ -123,20 +146,5 @@ int db_messages_each(sqlite3 *db, int limit, MessageFn fn, void *ctx){
 
 	sqlite3_bind_int(stmt, 1, limit);
 
-	int count = 0;
-	int rc;
-	while ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
-		fn(ctx,
-			(const char *)sqlite3_column_text(stmt, 0),
-			(const char *)sqlite3_column_text(stmt, 1),
-			(const char *)sqlite3_column_text(stmt, 2));
-		count++;
-	}
-	if (rc != SQLITE_DONE){
-		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
-		count = -1;
-	}
-
-	sqlite3_finalize(stmt);
-	return count;
+	return each_message(db, stmt, fn, ctx);
 }

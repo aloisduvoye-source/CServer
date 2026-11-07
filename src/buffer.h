@@ -16,5 +16,6 @@ void buf_init(Buffer *b);
 void buf_free(Buffer *b);
 void buf_append(Buffer *b, const char *s);       // ajoute s tel quel
 void buf_append_html(Buffer *b, const char *s);  // ajoute s échappé (< -> &lt; ...)
+void buf_append_json(Buffer *b, const char *s);  // ajoute "s" entre guillemets, échappé (" -> \" ...)
 
 #endif

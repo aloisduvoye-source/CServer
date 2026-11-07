@@ -26,5 +26,5 @@ Objectif : un livre d'or (formulaire + liste des messages).
 - [x] Base de données SQLite
 - [x] Échappement HTML (XSS)
 - [x] Livre d'or (enregistrer et afficher les messages)
-- [ ] API JSON
+- [x] API JSON
 - [ ] Sessions et cookies

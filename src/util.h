@@ -18,4 +18,7 @@ int html_escape(const char *src, char *dst, size_t dst_size);
 // taille de buffer suffisante pour échapper n octets (pire cas : " -> &quot;, x6)
 #define HTML_ESCAPE_MAX(n) ((n) * 6 + 1)
 
+// 1 si s est de l'UTF-8 bien formé, 0 sinon (ex : "%FF" décodé)
+int utf8_valid(const char *s);
+
 #endif

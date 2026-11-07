@@ -31,11 +31,24 @@ check() { # check <code attendu> <méthode> <chemin> [options curl...]
 	fi
 }
 
-check_contains() { # check_contains <texte attendu> <chemin>
-	if curl -s --path-as-is "localhost:8080$2" | grep -qF -- "$1"; then
-		echo "ok     GET $2 contient $1"
+check_contains() { # check_contains <texte attendu> <chemin> [options curl...]
+	text=$1; path=$2; shift 2
+	method=GET; [ $# -gt 0 ] && method=POST
+	# printf et pas echo : le echo de sh interpréterait les \n et \\ du texte
+	if curl -s --path-as-is "$@" "localhost:8080$path" | grep -qF -- "$text"; then
+		printf 'ok     %s %s contient %s\n' "$method" "$path" "$text"
 	else
-		echo "ECHEC  GET $2 ne contient pas $1"
+		printf 'ECHEC  %s %s ne contient pas %s\n' "$method" "$path" "$text"
+		FAIL=1
+	fi
+}
+
+check_type() { # check_type <content-type attendu> <chemin>
+	got=$(curl -s -o /dev/null -w '%{content_type}' "localhost:8080$2")
+	if [ "$got" = "$1" ]; then
+		echo "ok     GET $2 -> $got"
+	else
+		echo "ECHEC  GET $2 -> $got (attendu $1)"
 		FAIL=1
 	fi
 }
@@ -151,5 +164,28 @@ check 400 POST /guestbook --data-binary "name=Jean&message="
 check 400 POST /guestbook --data-binary "name=+++&message=salut"
 check 400 POST /guestbook --data-binary "message=salut"
 check 400 POST /guestbook --data-binary "name=$LONG&message=salut"
+check 400 POST /guestbook --data-binary "name=%FF&message=utf8"
+
+# frontend
+check 200 GET /style.css
+check 200 GET /guestbook.js
+check_type "text/css"        /style.css
+check_type "text/javascript" /guestbook.js
+check_contains 'href="/style.css"'   /about.html
+check_contains 'src="/guestbook.js"' /guestbook
+
+# API JSON : lecture (messages postés plus haut)
+check_type "application/json" /api/messages
+check_contains '"name":"Jean","message":"premier message"' /api/messages
+check_contains '"message":"ligne 1\r\nligne 2"'            /api/messages
+check_contains '"name":"<script>alert(1)</script>"'       /api/messages   # JSON : pas d'échappement HTML
+
+# API JSON : écriture
+check 201 POST /api/messages --data-binary "name=Api&message=via+fetch"
+check_contains '"name":"Api","message":"via fetch"' /api/messages
+check_contains '"name":"Tom \"T\" \\ x"' /api/messages --data-binary 'name=Tom+%22T%22+%5C+x&message=guillemets'
+check 400 POST /api/messages --data-binary "name=&message=vide"
+check_contains '{"error":"name is required' /api/messages --data-binary "name=&message=vide"
+check 400 POST /api/messages --data-binary "name=%FF&message=utf8"
 
 exit $FAIL
