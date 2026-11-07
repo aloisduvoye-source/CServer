@@ -6,7 +6,7 @@ Ce dépôt est un **modèle** : on le clone, et le clone devient son projet.
 
 ```sh
 sudo apt install libsqlite3-dev libcrypt-dev   # une seule fois
-git clone <url> mon-site && cd mon-site
+git clone https://github.com/aloisduvoye-source/CServer.git mon-site && cd mon-site
 make new          # crée le projet à la racine : main.c, templates/, www/...
 make run          # le lance, puis ouvrir http://localhost:8080
 ```
@@ -27,7 +27,7 @@ make run          # le lance, puis ouvrir http://localhost:8080
 ```sh
 git remote rename origin cserver      # le framework, pour les mises à jour
 git remote add origin <ton dépôt>     # ton projet
-git pull cserver main                 # plus tard : une nouvelle version de cserver
+git pull cserver master                # plus tard : une nouvelle version de cserver
 ```
 
 Tes fichiers (`main.c`, `templates/`...) ne sont pas ceux du framework (`cserver/`, `examples/`) : les mises à jour ne les touchent pas.

@@ -69,7 +69,7 @@ http://localhost:8080/hello?name=Zoé affiche « Hello Zoé! » dans le layout p
 **Le plus simple : cloner le dépôt**, qui sert de modèle, puis créer le projet à sa racine :
 
 ```sh
-git clone <url du dépôt cserver> mon-site && cd mon-site
+git clone https://github.com/aloisduvoye-source/CServer.git mon-site && cd mon-site
 make new
 make run                            # puis ouvrir http://localhost:8080
 ```
@@ -85,7 +85,7 @@ Avec un sous-module :
 
   ```sh
   mkdir mon-site && cd mon-site && git init
-  git submodule add <url du dépôt cserver> cserver-src
+  git submodule add https://github.com/aloisduvoye-source/CServer.git cserver-src
   sh cserver-src/cserver/tools/new.sh .
   ```
 
@@ -95,7 +95,7 @@ Avec un sous-module :
 
 ```sh
 mkdir mon-site && cd mon-site && git init
-git submodule add <url du dépôt cserver> cserver-src
+git submodule add https://github.com/aloisduvoye-source/CServer.git cserver-src
 echo 'include cserver-src/cserver/cserver.mk' > Makefile
 ```
 
