@@ -17,6 +17,31 @@ int cs_cookie(cs_ctx *c, const char *name, char *out, size_t size){
 	return http_cookie_get(&c->req, name, out, size);
 }
 
+int cs_param(cs_ctx *c, const char *name, char *out, size_t size){
+	for (int i = 0; i < c->params_count; i++){
+		if (strcmp(c->params[i].name, name) == 0){
+			if (strlen(c->params[i].value) >= size){return -1;}
+			strcpy(out, c->params[i].value);
+			return 0;
+		}
+	}
+	return -1;
+}
+
+long cs_param_id(cs_ctx *c, const char *name){
+	char text[32];
+	if (cs_param(c, name, text, sizeof(text)) < 0){return -1;}
+
+	size_t n = strlen(text);
+	if (n == 0 || n > 18){return -1;}   // 18 chiffres : pas de dépassement d'un long
+	long id = 0;
+	for (const char *s = text; *s != '\0'; s++){
+		if (*s < '0' || *s > '9'){return -1;}
+		id = id * 10 + (*s - '0');
+	}
+	return id > 0 ? id : -1;
+}
+
 /* ---------------------------------------------------------------- réponses */
 
 // toutes les réponses passent par ici : on retient qu'une réponse est partie

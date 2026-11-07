@@ -34,6 +34,13 @@ typedef struct {
 	int        user_state;  // 0 : pas encore cherché, 1 : connecté, -1 : anonyme
 	cs_user    user;
 	int        responded;   // une réponse est déjà partie
+
+	// interne : passer par cs_param() ; segments capturés par une route "/x/:nom"
+	int        params_count;
+	struct {
+		char name[32];
+		char value[128];
+	} params[8];
 } cs_ctx;
 
 typedef void (*cs_handler)(cs_ctx *c);
@@ -43,6 +50,11 @@ typedef void (*cs_handler)(cs_ctx *c);
 int cs_query(cs_ctx *c, const char *key, char *out, size_t size);    // dans l'URL : ?key=...
 int cs_form(cs_ctx *c, const char *key, char *out, size_t size);     // dans le corps d'un POST
 int cs_cookie(cs_ctx *c, const char *name, char *out, size_t size);
+
+// segment capturé par la route : pour "/todos/:id/done" et "/todos/42/done",
+// cs_param(c, "id", ...) donne "42"
+int  cs_param(cs_ctx *c, const char *name, char *out, size_t size);
+long cs_param_id(cs_ctx *c, const char *name);   // le segment s'il est un entier > 0, sinon -1
 
 /* ================================================================ texte */
 
@@ -170,7 +182,8 @@ void cs_logout(cs_ctx *c);
 
 typedef struct {
 	const char *method;    // "GET", "POST"...
-	const char *path;      // chemin exact, ex : "/guestbook"
+	const char *path;      // chemin, ex : "/guestbook" ; ":nom" capture un segment,
+	                       // ex : "/todos/:id/done" (lire avec cs_param)
 	cs_handler  handler;   // ou NULL : la route affiche simplement le modèle `page`
 	const char *page;      // sans handler : modèle à afficher, ex : "about.html"
 	const char *title;     // sans handler : titre de la page (NULL : le nom du site seul)
