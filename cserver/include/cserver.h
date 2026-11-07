@@ -18,6 +18,7 @@ typedef struct {
 	                      // du visiteur, donnée par le proxy ; voir trusted_proxy)
 	int    https;         // 1 si le visiteur est en HTTPS (dit par le proxy de confiance)
 	char   csrf[72];      // en-tête X-CSRF-Token (voir cs_csrf_token)
+	char   content_type[256]; // en-tête Content-Type : format du corps
 	char  *body;          // corps (POST), terminé par '\0' : lire avec cs_form()
 	size_t body_len;
 } cs_request;
@@ -55,7 +56,26 @@ typedef void (*cs_handler)(cs_ctx *c);
 // (si -1, `out` n'est pas une chaîne valide)
 int cs_query(cs_ctx *c, const char *key, char *out, size_t size);    // dans l'URL : ?key=...
 int cs_form(cs_ctx *c, const char *key, char *out, size_t size);     // dans le corps d'un POST
+                                    // (formulaire classique ou multipart/form-data)
 int cs_cookie(cs_ctx *c, const char *name, char *out, size_t size);
+
+// un fichier envoyé par un formulaire <form method="post" enctype="multipart/form-data">
+// avec <input type="file" name="...">. Tout y est choisi par le visiteur :
+typedef struct {
+	const char *data;          // le contenu, binaire (pas une chaîne) ; valable jusqu'à
+	size_t      len;           // la fin de la requête
+	char        filename[256]; // son nom chez le visiteur : à afficher au plus, JAMAIS
+	                           // comme chemin (il peut valoir "../../etc/passwd")
+	char        type[128];     // le type qu'annonce le navigateur : ne pas s'y fier
+} cs_file;
+// 0, ou -1 si absent (aucun fichier choisi, ou pas un formulaire multipart).
+// La taille est bornée par celle d'une requête (1 Mo) : au site de fixer la sienne.
+int cs_form_file(cs_ctx *c, const char *name, cs_file *file);
+
+// le type d'une image d'après ses premiers octets : "image/png", "image/jpeg",
+// "image/gif", "image/webp", ou NULL pour tout le reste (SVG compris : il peut
+// contenir du JavaScript)
+const char *cs_image_type(const void *data, size_t len);
 
 // segment capturé par la route : pour "/todos/:id/done" et "/todos/42/done",
 // cs_param(c, "id", ...) donne "42"

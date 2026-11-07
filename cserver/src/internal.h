@@ -10,6 +10,12 @@
 // (variable globale : chaque processus enfant en reçoit une copie au fork)
 extern cs_app cs_config;
 
+/* ---------------------------------------------------------------- form.c */
+
+// cs_form et cs_form_file, sans contexte (le fuzzing les appelle directement)
+int  form_get(const cs_request *req, const char *key, char *out, size_t size);
+int  form_file(const cs_request *req, const char *key, cs_file *file);
+
 /* ---------------------------------------------------------------- http.c */
 
 #define HTTP_BUF 8192   // taille maximale des en-têtes, et du tampon de lecture

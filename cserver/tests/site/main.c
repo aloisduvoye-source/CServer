@@ -176,6 +176,23 @@ static void client_ip(cs_ctx *c){
 	send_text(c, out);
 }
 
+// POST /upload : un formulaire multipart, avec un champ texte et un fichier
+static void upload(cs_ctx *c){
+	char name[32] = "-";
+	if (cs_form(c, "name", name, sizeof(name)) < 0){strcpy(name, "-");}
+	cs_file f;
+	char out[512];
+	if (cs_form_file(c, "file", &f) < 0){
+		snprintf(out, sizeof(out), "name=%s pas de fichier", name);
+	}
+	else {
+		const char *image = cs_image_type(f.data, f.len);
+		snprintf(out, sizeof(out), "name=%s file=%s len=%zu type=%s image=%s",
+			name, f.filename, f.len, f.type, image != NULL ? image : "non");
+	}
+	send_text(c, out);
+}
+
 // GET /hash?p=... : cs_password_hash puis cs_password_verify
 static void hash(cs_ctx *c){
 	char p[64], h[CS_HASH_MAX];
@@ -194,6 +211,7 @@ static const cs_route routes[] = {
 	CS_GET ("/entete",     headers),
 	CS_GET ("/hash",       hash),
 	CS_GET ("/ip",         client_ip),
+	CS_POST("/upload",     upload),
 	CS_PAGE("/", "index.html", "accueil"),
 	CS_PAGE("/sous", "sous/dossier/page.html", "sous"),
 	CS_GET ("/echo",       echo),

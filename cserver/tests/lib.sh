@@ -73,7 +73,7 @@ csrf_from_args() {
 
 # méthode affichée : POST si les options curl contiennent des données
 method_of() {
-	for a in "$@"; do [ "$a" = "--data-binary" ] && { echo POST; return; }; done
+	for a in "$@"; do case "$a" in --data-binary|-F) echo POST; return;; esac; done
 	echo GET
 }
 

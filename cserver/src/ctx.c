@@ -10,8 +10,11 @@ int cs_query(cs_ctx *c, const char *key, char *out, size_t size){
 }
 
 int cs_form(cs_ctx *c, const char *key, char *out, size_t size){
-	// un formulaire POST a le même format que la query : "a=1&b=2"
-	return cs_params_get(c->req.body, key, out, size);
+	return form_get(&c->req, key, out, size);
+}
+
+int cs_form_file(cs_ctx *c, const char *name, cs_file *file){
+	return form_file(&c->req, name, file);
 }
 
 int cs_cookie(cs_ctx *c, const char *name, char *out, size_t size){

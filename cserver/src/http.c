@@ -184,6 +184,18 @@ static int parse_head(char *head, cs_request *req, head_info *info){
 		}
 	}
 
+	// le format du corps (formulaire classique, multipart/form-data, JSON...) ;
+	// trop long : ignoré, le corps sera lu comme un formulaire classique
+	const char *ctype = find_header(head, "Content-Type");
+	if (ctype != NULL){
+		size_t len = strcspn(ctype, "\r");
+		while (len > 0 && (ctype[len-1] == ' ' || ctype[len-1] == '\t')){len--;}
+		if (len < sizeof(req->content_type)){
+			memcpy(req->content_type, ctype, len);
+			req->content_type[len] = '\0';
+		}
+	}
+
 	// le jeton CSRF envoyé par du JavaScript (trop long : ignoré, la vérification échouera)
 	const char *csrf = find_header(head, "X-CSRF-Token");
 	if (csrf != NULL){
@@ -499,6 +511,9 @@ void http_send_header(int client, int status, const char *content_type, size_t l
 		"HTTP/1.1 %d %s\r\n"
 		"Content-Type: %s\r\n"
 		"Content-Length: %zu\r\n"
+		// le navigateur s'en tient au Content-Type : un fichier envoyé par un visiteur
+		// (un faux PNG qui contient du HTML) n'est jamais exécuté comme une page
+		"X-Content-Type-Options: nosniff\r\n"
 		"%s"
 		"\r\n",
 		status, status_text(status), content_type, len, extra != NULL ? extra : ""

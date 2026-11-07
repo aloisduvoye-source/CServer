@@ -301,6 +301,46 @@ n=$(grep -c "^migration appliquée" "$DBDIR/server2.log")
 check_contains "bonjour jean" /prive -b "$JEAN"                 # la session a survécu
 [ "$(curl -s "$BASE/notes")" = "20" ] && pass "redémarrage : données conservées" || fail "redémarrage : données perdues"
 
+# --------------------------------------------------------------- envoi de fichiers
+F="$DBDIR/files"; mkdir -p "$F"
+printf '\211PNG\r\n\032\n\0\0\0\rIHDR' > "$F/a.png"
+printf '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' > "$F/x.svg"
+printf 'GIF89a\0\0' > "$F/g.gif"; printf '\377\330\377\340' > "$F/j.jpg"; printf 'RIFF\0\0\0\0WEBPVP8 ' > "$F/w.webp"
+: > "$F/vide"
+check_contains "name=zoé file=a.png len=16 type=image/png image=image/png" /upload -F "name=zoé" -F "file=@$F/a.png"
+check_contains "image=non" /upload -F "file=@$F/x.svg"                                   # SVG refusé
+check_contains "image=non" /upload -F "file=@$F/x.svg;type=image/png;filename=x.png"     # même déguisé
+check_contains "image=image/gif"  /upload -F "file=@$F/g.gif"
+check_contains "image=image/jpeg" /upload -F "file=@$F/j.jpg"
+check_contains "image=image/webp" /upload -F "file=@$F/w.webp"
+check_contains "file=../../etc/passwd " /upload -F "file=@$F/a.png;filename=../../etc/passwd"  # rendu tel quel, au site de l'ignorer
+check_contains "name=jean pas de fichier" /upload -F "name=jean" -F "file=@$F/vide;filename="   # champ fichier laissé vide
+check_contains "name=- pas de fichier" /upload -F "name=@$F/a.png"           # un fichier n'est pas un champ texte
+check_contains "name=jean pas de fichier" /upload --data-binary "name=jean"   # formulaire classique : toujours lu
+head -c 300000 /dev/urandom > "$F/gros"
+check_contains "len=300000 " /upload -F "file=@$F/gros"                       # binaire, '\0' compris
+head -c 1100000 /dev/zero > "$F/trop"
+check 413 POST /upload -F "file=@$F/trop"
+# frontière entre guillemets, partie sans en-tête Content-Type, corps mal formés
+mp() { curl -s -H "Content-Type: multipart/form-data; boundary=$1" --data-binary "$2" "$BASE/upload"; }
+r=$(mp '"b b"' "$(printf -- '--b b\r\nContent-Disposition: form-data; name="name"\r\n\r\nquote\r\n--b b--\r\n')")
+[ "$r" = "name=quote pas de fichier" ] && pass "frontière entre guillemets" || fail "frontière entre guillemets : $r"
+r=$(mp XyZ "$(printf -- '--XyZ\r\nContent-Disposition: form-data; name="name"\r\n\r\nsans fin')")
+[ "$r" = "name=- pas de fichier" ] && pass "partie sans fin : ignorée" || fail "partie sans fin : $r"
+r=$(mp XyZ "$(printf -- '--XyZ\r\nContent-Disposition: form-data; name="name\r\n\r\nx\r\n--XyZ--')")
+[ "$r" = "name=- pas de fichier" ] && pass "guillemet non fermé : ignoré" || fail "guillemet non fermé : $r"
+r=$(mp XyZ "$(printf -- '--XyZ\r\nContent-Disposition: form-data; filename="a"; name="name"\r\n\r\nx\r\n--XyZ--')")
+[ "$r" = "name=- pas de fichier" ] && pass "filename avant name : c'est un fichier" || fail "filename avant name : $r"
+check_contains "X-Content-Type-Options: nosniff" /hello.txt -D -
+
+# CSRF : le jeton est lu dans un formulaire multipart aussi
+got=$(curl -s -o /dev/null -w '%{http_code}' -b "$JEAN" -F "csrf=faux" -F "file=@$F/a.png" "$BASE/upload")
+[ "$got" = 403 ] && pass "multipart : mauvais jeton CSRF -> 403" || fail "multipart : mauvais jeton -> $got"
+got=$(curl -s -o /dev/null -w '%{http_code}' -b "$JEAN" -F "csrf=$(csrf_of "$JEAN")" -F "file=@$F/a.png" "$BASE/upload")
+[ "$got" = 200 ] && pass "multipart : jeton CSRF dans le formulaire" || fail "multipart : jeton dans le formulaire -> $got"
+got=$(curl -s -o /dev/null -w '%{http_code}' -b "$JEAN" -F "file=@$F/a.png" "$BASE/upload")
+[ "$got" = 403 ] && pass "multipart sans jeton : 403" || fail "multipart sans jeton -> $got"
+
 # --------------------------------------------------------------- derrière un proxy
 # sans trusted_proxy : X-Forwarded-For est ignoré (sinon chacun choisirait son adresse)
 check_contains "ip=127.0.0.1 https=0" /ip -H "X-Forwarded-For: 6.6.6.6" -H "X-Forwarded-Proto: https"
