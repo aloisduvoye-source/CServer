@@ -42,6 +42,24 @@ int main(void){
 			exit(1);
 		}
 		printf("client fd %d\n", client);
+
+		char request[4096];
+		ssize_t n = read(client, request, sizeof(request)-1);
+		if (n<=0){
+			close(client);
+			continue;
+		}
+
+		request[n] = '\0';
+
+		 char method[8], path[256];
+		 if (sscanf(request, "%7s %255s", method, path) != 2){
+			close (client);
+			continue;
+		 }
+
+		printf("%s %s\n", method, path);
+
 		char *response=
 			"HTTP/1.0 200 OK\r\n"
 			"Content-Type: text/html\r\n"
