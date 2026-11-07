@@ -4,8 +4,7 @@
 #include<strings.h>
 #include<ctype.h>
 #include<unistd.h>
-#include"http.h"
-#include"util.h"
+#include"internal.h"
 
 #define MAX_HEADER 8192
 #define MAX_BODY   (1024 * 1024)   // 1 Mo
@@ -15,7 +14,7 @@ static const char *status_text(int status){
 		case 200: return "OK";
 		case 201: return "Created";
 		case 303: return "See Other";
-		case 400: return "Bad Request";
+		case 400: return "Bad cs_request";
 		case 401: return "Unauthorized";
 		case 403: return "Forbidden";
 		case 404: return "Not Found";
@@ -23,7 +22,7 @@ static const char *status_text(int status){
 		case 409: return "Conflict";
 		case 413: return "Payload Too Large";
 		case 429: return "Too Many Requests";
-		case 431: return "Request Header Fields Too Large";
+		case 431: return "cs_request Header Fields Too Large";
 		case 500: return "Internal Server Error";
 		default:  return "Unknown";
 	}
@@ -72,7 +71,7 @@ static const char *find_header(const char *head, const char *name){
 	return NULL;
 }
 
-int http_parse(int client, Request *req){
+int http_parse(int client, cs_request *req){
 	memset(req, 0, sizeof(*req));
 
 	// 1. lire jusqu'à la ligne vide "\r\n\r\n" qui termine les en-têtes
@@ -108,7 +107,7 @@ int http_parse(int client, Request *req){
 	}
 
 	// dans un chemin, '+' reste un '+' (seule la query l'utilise pour l'espace)
-	if (url_decode(target, strlen(target), req->path, sizeof(req->path), 0) < 0){
+	if (cs_url_decode(target, strlen(target), req->path, sizeof(req->path), 0) < 0){
 		return 400;
 	}
 
@@ -149,13 +148,13 @@ int http_parse(int client, Request *req){
 	return 0;
 }
 
-void http_free(Request *req){
+void http_free(cs_request *req){
 	free(req->body);
 	req->body = NULL;
 }
 
 // "a=1; cserver_session=f3a9...; b=2" : les paires sont séparées par des ';'
-int cookie_get(const Request *req, const char *name, char *out, size_t out_size){
+int http_cookie_get(const cs_request *req, const char *name, char *out, size_t out_size){
 	size_t n = strlen(name);
 	const char *p = req->cookie;
 
@@ -181,7 +180,7 @@ int cookie_get(const Request *req, const char *name, char *out, size_t out_size)
 }
 
 // write() peut écrire moins que demandé : on boucle jusqu'au bout
-int write_all(int fd, const char *buf, size_t len){
+int http_write_all(int fd, const char *buf, size_t len){
 	while (len > 0){
 		ssize_t n = write(fd, buf, len);
 		if (n<=0){
@@ -193,7 +192,7 @@ int write_all(int fd, const char *buf, size_t len){
 	return 0;
 }
 
-void send_header(int client, int status, const char *content_type, size_t len){
+void http_send_header(int client, int status, const char *content_type, size_t len){
 	char header[256];
 	int n = snprintf(header, sizeof(header),
 		"HTTP/1.0 %d %s\r\n"
@@ -202,23 +201,23 @@ void send_header(int client, int status, const char *content_type, size_t len){
 		"\r\n",
 		status, status_text(status), content_type, len
 	);
-	write_all(client, header, n);
+	http_write_all(client, header, n);
 }
 
-void send_response(int client, int status, const char *content_type, const char *body, size_t len){
-	send_header(client, status, content_type, len);
-	write_all(client, body, len);
+void http_send(int client, int status, const char *content_type, const char *body, size_t len){
+	http_send_header(client, status, content_type, len);
+	http_write_all(client, body, len);
 }
 
-void send_error(int client, int status){
+void http_send_error(int client, int status){
 	char body[128];
 	int len = snprintf(body, sizeof(body), "<h1>%d %s</h1>\n", status, status_text(status));
-	send_response(client, status, "text/html", body, len);
+	http_send(client, status, "text/html", body, len);
 }
 
 // `location` et `extra_headers` doivent venir de NOTRE code : un "\r\n" venu
 // d'un utilisateur permettrait d'injecter de faux en-têtes dans la réponse
-void send_redirect(int client, const char *location, const char *extra_headers){
+void http_redirect(int client, const char *location, const char *extra_headers){
 	char header[1024];
 	int n = snprintf(header, sizeof(header),
 		"HTTP/1.0 303 See Other\r\n"
@@ -229,8 +228,8 @@ void send_redirect(int client, const char *location, const char *extra_headers){
 		location, extra_headers != NULL ? extra_headers : ""
 	);
 	if (n < 0 || (size_t)n >= sizeof(header)){
-		send_error(client, 500);
+		http_send_error(client, 500);
 		return;
 	}
-	write_all(client, header, n);
+	http_write_all(client, header, n);
 }

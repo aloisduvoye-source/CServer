@@ -7,9 +7,7 @@
 #include<sys/time.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
-#include"cserver.h"
-#include"config.h"
-#include"router.h"
+#include"internal.h"
 
 cs_app cs_config;
 
@@ -19,19 +17,24 @@ static void handle_client(int client, const char *ip){
 	struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
 	setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-	Request req;
-	int r = http_parse(client, &req);
+	cs_ctx c;
+	memset(&c, 0, sizeof(c));
+	c.client = client;
+
+	int r = http_parse(client, &c.req);
 	if (r == 0){
-		snprintf(req.ip, sizeof(req.ip), "%s", ip);
-		printf("[pid %d] %s %s %s%s%s (%zu octets)\n", getpid(), req.ip, req.method, req.path,
-			req.query[0] ? "?" : "", req.query, req.body_len);
-		route(client, &req);
-	}
-	else if (r > 0){
-		send_error(client, r);
+		snprintf(c.req.ip, sizeof(c.req.ip), "%s", ip);
+		printf("[pid %d] %s %s %s%s%s (%zu octets)\n", getpid(), c.req.ip, c.req.method, c.req.path,
+			c.req.query[0] ? "?" : "", c.req.query, c.req.body_len);
+		route(&c);
+		ctx_finish(&c);   // 500 si le handler n'a rien envoyé, ferme la base, libère le corps
+		return;
 	}
 
-	http_free(&req);
+	if (r > 0){
+		http_send_error(client, r);
+	}
+	http_free(&c.req);
 }
 
 // copie la configuration du site et complète ce qu'il n'a pas précisé

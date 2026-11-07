@@ -4,11 +4,7 @@
 #include<time.h>
 #include<crypt.h>
 #include<sys/random.h>
-#include"auth.h"
-#include"buffer.h"
-#include"config.h"
-#include"page.h"
-#include"util.h"
+#include"internal.h"
 
 #define SESSION_SECONDS (7 * 24 * 3600)     // 7 jours
 #define TOKEN_BYTES     32                  // 256 bits d'aléatoire
@@ -84,19 +80,21 @@ static int new_token(char out[TOKEN_HEX + 1]){
 	return 0;
 }
 
-int auth_current_user(sqlite3 *db, const Request *req, User *user){
+int auth_lookup_user(cs_ctx *c, cs_user *user){
 	char token[TOKEN_HEX + 1];
-	if (cookie_get(req, cs_config.cookie_name, token, sizeof(token)) < 0){return 0;}
+	if (cs_cookie(c, cs_config.cookie_name, token, sizeof(token)) < 0){return 0;}
 	if (strlen(token) != TOKEN_HEX){return 0;}
-	return db_session_user(db, token, (long)time(NULL), user) == 1;
+
+	sqlite3 *db = cs_db(c);
+	return db != NULL && db_session_user(db, token, (long)time(NULL), user) == 1;
 }
 
 // crée la session, pose le cookie et redirige vers la page choisie par le site
-static void start_session(int client, sqlite3 *db, long user_id){
+static void start_session(cs_ctx *c, long user_id){
 	char token[TOKEN_HEX + 1];
 	long expires = (long)time(NULL) + SESSION_SECONDS;
-	if (new_token(token) < 0 || db_session_create(db, token, user_id, expires) < 0){
-		send_error(client, 500);
+	if (new_token(token) < 0 || db_session_create(cs_db(c), token, user_id, expires) < 0){
+		cs_error(c, 500);
 		return;
 	}
 
@@ -107,49 +105,47 @@ static void start_session(int client, sqlite3 *db, long user_id){
 	snprintf(cookie, sizeof(cookie),
 		"Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax\r\n",
 		cs_config.cookie_name, token, SESSION_SECONDS);
-	send_redirect(client, cs_config.after_login, cookie);
+	ctx_redirect_with(c, cs_config.after_login, cookie);
 }
 
 /* ---------------------------------------------------------------- pages */
 
 // formulaire d'inscription (signup = 1) ou de connexion (signup = 0)
 // name : valeur à réafficher dans le champ ; error : message, ou NULL
-static void send_form(int client, int status, int signup, const char *name, const char *error){
-	Buffer page;
-	buf_init(&page);
-	page_begin(&page, signup ? "sign up" : "log in", NULL, NULL);
+static void send_form(cs_ctx *c, int status, int signup, const char *name, const char *error){
+	cs_buf page;
+	cs_buf_init(&page);
+	cs_page_begin(c, &page, signup ? "sign up" : "log in", NULL);
 
-	buf_append(&page, signup ? "    <h1>sign up</h1>\n" : "    <h1>log in</h1>\n");
-	buf_append(&page, signup ? "    <form method=\"post\" action=\"/signup\">\n"
-	                         : "    <form method=\"post\" action=\"/login\">\n");
-	buf_append(&page, "        <p><input name=\"name\" placeholder=\"name\" autocomplete=\"username\" required value=\"");
-	buf_append_html(&page, name);   // dans un attribut "..." : le " doit être échappé
-	buf_append(&page, "\"></p>\n");
-	buf_append(&page, signup
+	cs_buf_append(&page, signup ? "    <h1>sign up</h1>\n" : "    <h1>log in</h1>\n");
+	cs_buf_append(&page, signup ? "    <form method=\"post\" action=\"/signup\">\n"
+	                            : "    <form method=\"post\" action=\"/login\">\n");
+	cs_buf_append(&page, "        <p><input name=\"name\" placeholder=\"name\" autocomplete=\"username\" required value=\"");
+	cs_buf_append_html(&page, name);   // dans un attribut "..." : le " doit être échappé
+	cs_buf_append(&page, "\"></p>\n");
+	cs_buf_append(&page, signup
 		? "        <p><input name=\"password\" type=\"password\" placeholder=\"password (8+ characters)\" autocomplete=\"new-password\" minlength=\"8\" required></p>\n"
 		: "        <p><input name=\"password\" type=\"password\" placeholder=\"password\" autocomplete=\"current-password\" required></p>\n");
-	buf_append(&page, signup ? "        <p><button>sign up</button>" : "        <p><button>log in</button>");
+	cs_buf_append(&page, signup ? "        <p><button>sign up</button>" : "        <p><button>log in</button>");
 	if (error != NULL){
-		buf_append(&page, " <span class=\"error\">");
-		buf_append_html(&page, error);
-		buf_append(&page, "</span>");
+		cs_buf_append(&page, " <span class=\"error\">");
+		cs_buf_append_html(&page, error);
+		cs_buf_append(&page, "</span>");
 	}
-	buf_append(&page, "</p>\n    </form>\n");
-	buf_append(&page, signup ? "    <p>already registered? <a href=\"/login\">log in</a></p>\n"
-	                         : "    <p>no account? <a href=\"/signup\">sign up</a></p>\n");
+	cs_buf_append(&page, "</p>\n    </form>\n");
+	cs_buf_append(&page, signup ? "    <p>already registered? <a href=\"/login\">log in</a></p>\n"
+	                            : "    <p>no account? <a href=\"/signup\">sign up</a></p>\n");
 
-	page_end(&page);
-	page_send(client, status, &page);
+	cs_page_end(&page);
+	cs_html(c, status, &page);
 }
 
-void auth_signup_page(int client, Request *req){
-	(void)req;
-	send_form(client, 200, 1, "", NULL);
+void cs_signup_page(cs_ctx *c){
+	send_form(c, 200, 1, "", NULL);
 }
 
-void auth_login_page(int client, Request *req){
-	(void)req;
-	send_form(client, 200, 0, "", NULL);
+void cs_login_page(cs_ctx *c){
+	send_form(c, 200, 0, "", NULL);
 }
 
 /* ---------------------------------------------------------------- actions */
@@ -164,77 +160,68 @@ static int valid_username(const char *s){
 	return 1;
 }
 
-void auth_signup(int client, Request *req){
+void cs_signup(cs_ctx *c){
 	char name[64];
 	char password[PASSWORD_MAX + 1];
 
-	// attention : si query_get échoue, le buffer n'est pas une chaîne valide
-	if (query_get(req->body, "name", name, sizeof(name)) < 0){
-		send_form(client, 400, 1, "", "name: 3 to 20 letters, digits, _ or -");
+	// attention : si cs_form échoue, le buffer n'est pas une chaîne valide
+	if (cs_form(c, "name", name, sizeof(name)) < 0){
+		send_form(c, 400, 1, "", "name: 3 to 20 letters, digits, _ or -");
 		return;
 	}
 	if (!valid_username(name)){
-		send_form(client, 400, 1, name, "name: 3 to 20 letters, digits, _ or -");
+		send_form(c, 400, 1, name, "name: 3 to 20 letters, digits, _ or -");
 		return;
 	}
-	if (query_get(req->body, "password", password, sizeof(password)) < 0
-	 || strlen(password) < PASSWORD_MIN){
-		send_form(client, 400, 1, name, "password: 8 to 128 characters");
+	if (cs_form(c, "password", password, sizeof(password)) < 0 || strlen(password) < PASSWORD_MIN){
+		send_form(c, 400, 1, name, "password: 8 to 128 characters");
 		return;
 	}
 
 	char hash[CRYPT_OUTPUT_SIZE];
-	if (password_hash(password, hash, sizeof(hash)) < 0){
-		send_error(client, 500);
-		return;
-	}
-
-	sqlite3 *db = db_open();
-	if (db == NULL){
-		send_error(client, 500);
+	sqlite3 *db = cs_db(c);
+	if (db == NULL || password_hash(password, hash, sizeof(hash)) < 0){
+		cs_error(c, 500);
 		return;
 	}
 
 	long id = db_user_create(db, name, hash);
 	if (id == 0){
-		send_form(client, 409, 1, name, "this name is already taken");
+		send_form(c, 409, 1, name, "this name is already taken");
 	}
 	else if (id < 0){
-		send_error(client, 500);
+		cs_error(c, 500);
 	}
 	else {
-		start_session(client, db, id);
+		start_session(c, id);
 	}
-	sqlite3_close(db);
 }
 
-void auth_login(int client, Request *req){
-	sqlite3 *db = db_open();
+void cs_login(cs_ctx *c){
+	sqlite3 *db = cs_db(c);
 	if (db == NULL){
-		send_error(client, 500);
+		cs_error(c, 500);
 		return;
 	}
 
 	// trop d'échecs récents depuis cette adresse : on refuse sans même vérifier
 	long now = (long)time(NULL);
-	int failures = db_login_failures(db, req->ip, now - FAILURE_WINDOW);
+	int failures = db_login_failures(db, c->req.ip, now - FAILURE_WINDOW);
 	if (failures < 0){
-		send_error(client, 500);
-		sqlite3_close(db);
+		cs_error(c, 500);
 		return;
 	}
 	if (failures >= MAX_FAILURES){
-		send_form(client, 429, 0, "", "too many failed attempts, try again in 15 minutes");
-		sqlite3_close(db);
+		send_form(c, 429, 0, "", "too many failed attempts, try again in 15 minutes");
 		return;
 	}
 
 	char name[64];
 	char password[PASSWORD_MAX + 1];
-	int has_name = query_get(req->body, "name", name, sizeof(name)) == 0;
-	int has_password = query_get(req->body, "password", password, sizeof(password)) == 0;
+	int has_name = cs_form(c, "name", name, sizeof(name)) == 0;
+	int has_password = cs_form(c, "password", password, sizeof(password)) == 0;
 
-	User user;
+	cs_user user;
 	char hash[CRYPT_OUTPUT_SIZE];
 	int found = has_name && db_user_find(db, name, &user, hash, sizeof(hash)) == 1;
 
@@ -242,26 +229,22 @@ void auth_login(int client, Request *req){
 	int valid = has_password && password_verify(password, found ? hash : NULL) && found;
 
 	if (valid){
-		start_session(client, db, user.id);
+		start_session(c, user.id);
 	}
 	else {
-		db_login_failure_add(db, req->ip, now, now - FAILURE_WINDOW);
+		db_login_failure_add(db, c->req.ip, now, now - FAILURE_WINDOW);
 		// même message que le nom ou le mot de passe soit faux : on ne révèle
 		// pas quels comptes existent
-		send_form(client, 401, 0, has_name ? name : "", "invalid name or password");
+		send_form(c, 401, 0, has_name ? name : "", "invalid name or password");
 	}
-	sqlite3_close(db);
 }
 
-void auth_logout(int client, Request *req){
+void cs_logout(cs_ctx *c){
 	// la session est supprimée côté serveur : même un cookie copié ne marche plus
 	char token[TOKEN_HEX + 1];
-	if (cookie_get(req, cs_config.cookie_name, token, sizeof(token)) == 0){
-		sqlite3 *db = db_open();
-		if (db != NULL){
-			db_session_delete(db, token);
-			sqlite3_close(db);
-		}
+	sqlite3 *db = cs_db(c);
+	if (cs_cookie(c, cs_config.cookie_name, token, sizeof(token)) == 0 && db != NULL){
+		db_session_delete(db, token);
 	}
 
 	// Max-Age=0 : le navigateur efface le cookie
@@ -269,5 +252,5 @@ void auth_logout(int client, Request *req){
 	snprintf(cookie, sizeof(cookie),
 		"Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax\r\n",
 		cs_config.cookie_name);
-	send_redirect(client, cs_config.after_login, cookie);
+	ctx_redirect_with(c, cs_config.after_login, cookie);
 }

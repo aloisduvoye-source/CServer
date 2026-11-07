@@ -16,8 +16,15 @@ APP_HDR = $(wildcard $(APP)/*.h)
 $(APP)/server: $(APP_SRC) $(APP_HDR) $(LIB)
 	$(CC) $(CFLAGS) $(APP_SRC) $(LIB) -o $@ $(LDLIBS)
 
-$(LIB): $(LIB_OBJ)
-	ar rcs $@ $^
+# les objets du framework sont réunis en un seul (ld -r), puis objcopy rend locaux
+# tous les symboles sauf cs_* : un site peut avoir sa propre fonction route() ou
+# db_open() sans conflit avec l'intérieur du framework
+cserver/build/cserver.o: $(LIB_OBJ)
+	ld -r -o $@ $^
+	objcopy -w --keep-global-symbol='cs_*' $@
+
+$(LIB): cserver/build/cserver.o
+	ar rcs $@ $<
 
 cserver/build/%.o: cserver/src/%.c $(LIB_HDR) | cserver/build
 	$(CC) $(CFLAGS) -c $< -o $@

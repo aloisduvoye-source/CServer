@@ -3,10 +3,9 @@
 #include"guestbook.h"
 
 // page 404 du site
-static void not_found(int client, Request *req){
-	(void)req;
+static void not_found(cs_ctx *c){
 	const char *body = "<h1>404 dumbass</h1>\n";
-	send_response(client, 404, "text/html", body, strlen(body));
+	cs_send(c, 404, "text/html", body, strlen(body));
 }
 
 // ajouter une page = ajouter une ligne ici
@@ -18,11 +17,11 @@ static const cs_route routes[] = {
 	{ "POST", "/api/messages",     api_messages_post },
 
 	// comptes : les pages et actions sont fournies par le framework
-	{ "GET",  "/signup",           auth_signup_page },
-	{ "POST", "/signup",           auth_signup },
-	{ "GET",  "/login",            auth_login_page },
-	{ "POST", "/login",            auth_login },
-	{ "POST", "/logout",           auth_logout },
+	{ "GET",  "/signup",           cs_signup_page },
+	{ "POST", "/signup",           cs_signup },
+	{ "GET",  "/login",            cs_login_page },
+	{ "POST", "/login",            cs_login },
+	{ "POST", "/logout",           cs_logout },
 
 	{ NULL, NULL, NULL }
 };

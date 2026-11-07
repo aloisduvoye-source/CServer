@@ -1,5 +1,5 @@
 #include<string.h>
-#include"util.h"
+#include"internal.h"
 
 static int hex_value(char c){
 	if (c >= '0' && c <= '9'){return c - '0';}
@@ -8,7 +8,7 @@ static int hex_value(char c){
 	return -1;
 }
 
-int url_decode(const char *src, size_t src_len, char *dst, size_t dst_size, int plus_as_space){
+int cs_url_decode(const char *src, size_t src_len, char *dst, size_t dst_size, int plus_as_space){
 	if (dst_size == 0){return -1;}
 
 	size_t j = 0;
@@ -36,7 +36,7 @@ int url_decode(const char *src, size_t src_len, char *dst, size_t dst_size, int 
 	return (int)j;
 }
 
-int utf8_valid(const char *s){
+int cs_utf8_valid(const char *s){
 	const unsigned char *p = (const unsigned char *)s;
 
 	while (*p != '\0'){
@@ -58,7 +58,7 @@ int utf8_valid(const char *s){
 	return 1;
 }
 
-int query_get(const char *query, const char *key, char *out, size_t out_size){
+int cs_params_get(const char *query, const char *key, char *out, size_t out_size){
 	const char *p = query;
 
 	while (*p != '\0'){
@@ -70,12 +70,12 @@ int query_get(const char *query, const char *key, char *out, size_t out_size){
 		const char *key_end = (eq != NULL) ? eq : end;
 
 		char name[256];
-		if (url_decode(p, key_end - p, name, sizeof(name), 1) >= 0 && strcmp(name, key) == 0){
+		if (cs_url_decode(p, key_end - p, name, sizeof(name), 1) >= 0 && strcmp(name, key) == 0){
 			if (eq == NULL){             // "?debug" sans valeur
 				out[0] = '\0';
 				return 0;
 			}
-			return url_decode(eq + 1, end - (eq + 1), out, out_size, 1) < 0 ? -1 : 0;
+			return cs_url_decode(eq + 1, end - (eq + 1), out, out_size, 1) < 0 ? -1 : 0;
 		}
 
 		p = (*end == '&') ? end + 1 : end;
@@ -84,7 +84,7 @@ int query_get(const char *query, const char *key, char *out, size_t out_size){
 	return -1;
 }
 
-int html_escape(const char *src, char *dst, size_t dst_size){
+int cs_html_escape(const char *src, char *dst, size_t dst_size){
 	if (dst_size == 0){return -1;}
 
 	size_t j = 0;

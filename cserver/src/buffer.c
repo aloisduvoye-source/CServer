@@ -1,10 +1,10 @@
+#include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
-#include"buffer.h"
-#include"util.h"
+#include"internal.h"
 
 // s'assure qu'il reste au moins `extra` octets libres (+ la place du '\0')
-static int buf_reserve(Buffer *b, size_t extra){
+static int buf_reserve(cs_buf *b, size_t extra){
 	if (b->error){return -1;}
 
 	size_t need = b->len + extra + 1;
@@ -24,7 +24,7 @@ static int buf_reserve(Buffer *b, size_t extra){
 	return 0;
 }
 
-void buf_init(Buffer *b){
+void cs_buf_init(cs_buf *b){
 	b->data = NULL;
 	b->len = 0;
 	b->cap = 0;
@@ -34,25 +34,25 @@ void buf_init(Buffer *b){
 	}
 }
 
-void buf_free(Buffer *b){
+void cs_buf_free(cs_buf *b){
 	free(b->data);
 	b->data = NULL;
 	b->len = 0;
 	b->cap = 0;
 }
 
-void buf_append(Buffer *b, const char *s){
+void cs_buf_append(cs_buf *b, const char *s){
 	size_t n = strlen(s);
 	if (buf_reserve(b, n) < 0){return;}
 	memcpy(b->data + b->len, s, n + 1);   // +1 : copie aussi le '\0'
 	b->len += n;
 }
 
-void buf_append_html(Buffer *b, const char *s){
+void cs_buf_append_html(cs_buf *b, const char *s){
 	size_t n = strlen(s);
 	if (buf_reserve(b, n * 6) < 0){return;}   // pire cas : chaque octet devient &quot;
 
-	int written = html_escape(s, b->data + b->len, b->cap - b->len);
+	int written = cs_html_escape(s, b->data + b->len, b->cap - b->len);
 	if (written < 0){
 		b->error = 1;
 		return;
@@ -60,7 +60,7 @@ void buf_append_html(Buffer *b, const char *s){
 	b->len += written;
 }
 
-void buf_append_json(Buffer *b, const char *s){
+void cs_buf_append_json(cs_buf *b, const char *s){
 	static const char hex[] = "0123456789abcdef";
 
 	// pire cas : chaque octet devient \u00XX (6 octets), + les 2 guillemets
@@ -90,4 +90,10 @@ void buf_append_json(Buffer *b, const char *s){
 	*out++ = '"';
 	*out = '\0';
 	b->len = out - b->data;
+}
+
+void cs_buf_append_long(cs_buf *b, long n){
+	char num[32];
+	snprintf(num, sizeof(num), "%ld", n);
+	cs_buf_append(b, num);
 }
