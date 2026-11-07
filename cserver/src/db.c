@@ -128,7 +128,7 @@ int db_init(void){
 		");") == 0;
 
 	// d'abord le framework : les tables du site peuvent faire référence à cs_users
-	if (ok && cs_config.accounts){ok = apply_migrations(db, "cserver", framework_migrations) == 0;}
+	if (ok){ok = apply_migrations(db, "cserver", framework_migrations) == 0;}
 	if (ok && cs_config.migrations != NULL){ok = apply_migrations(db, "site", cs_config.migrations) == 0;}
 
 	sqlite3_close(db);
@@ -251,4 +251,47 @@ void db_login_failure_add(sqlite3 *db, const char *ip, long now, long forget_bef
 		sqlite3_bind_int64(clean, 1, forget_before);
 		cs_db_run(db, clean);
 	}
+}
+
+/* ---------------------------------------------------------------- limites */
+
+int db_rate_limit(sqlite3 *db, const char *action, const char *key, int max, long now, long window){
+	// BEGIN IMMEDIATE : une seule écriture à la fois. Sans ça, deux requêtes
+	// simultanées pourraient compter 29 toutes les deux, et passer toutes les deux.
+	if (exec(db, "BEGIN IMMEDIATE;") < 0){return -1;}
+
+	int allowed = -1;
+	sqlite3_stmt *clean = cs_db_prepare(db, "DELETE FROM cs_rate_limits WHERE action = ? AND at <= ?;");
+	sqlite3_stmt *count = cs_db_prepare(db,
+		"SELECT COUNT(*) FROM cs_rate_limits WHERE action = ? AND key = ? AND at > ?;");
+
+	if (clean != NULL && count != NULL){
+		sqlite3_bind_text(clean, 1, action, -1, SQLITE_STATIC);
+		sqlite3_bind_int64(clean, 2, now - window);
+		cs_db_run(db, clean);
+		clean = NULL;
+
+		sqlite3_bind_text(count, 1, action, -1, SQLITE_STATIC);
+		sqlite3_bind_text(count, 2, key, -1, SQLITE_STATIC);
+		sqlite3_bind_int64(count, 3, now - window);
+		if (sqlite3_step(count) == SQLITE_ROW){
+			allowed = sqlite3_column_int(count, 0) < max;
+		}
+	}
+	if (clean != NULL){sqlite3_finalize(clean);}
+	if (count != NULL){sqlite3_finalize(count);}
+
+	if (allowed == 1){
+		sqlite3_stmt *add = cs_db_prepare(db, "INSERT INTO cs_rate_limits (action, key, at) VALUES (?, ?, ?);");
+		if (add == NULL){allowed = -1;}
+		else {
+			sqlite3_bind_text(add, 1, action, -1, SQLITE_STATIC);
+			sqlite3_bind_text(add, 2, key, -1, SQLITE_STATIC);
+			sqlite3_bind_int64(add, 3, now);
+			if (cs_db_run(db, add) < 0){allowed = -1;}
+		}
+	}
+
+	exec(db, allowed >= 0 ? "COMMIT;" : "ROLLBACK;");
+	return allowed;
 }

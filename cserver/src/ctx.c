@@ -1,5 +1,6 @@
 #include<stdio.h>
 #include<string.h>
+#include<time.h>
 #include"internal.h"
 
 /* ---------------------------------------------------------------- lecture */
@@ -149,6 +150,19 @@ const cs_user *cs_require_user(cs_ctx *c){
 		cs_redirect(c, cs_config.login_path);
 	}
 	return user;
+}
+
+int cs_rate_limit(cs_ctx *c, const char *action, const char *key, int max, int window){
+	sqlite3 *db = cs_db(c);
+	if (db == NULL){return 1;}   // pas de base : pas de limite (cs_db l'a signalé)
+
+	int r = db_rate_limit(db, action, key != NULL ? key : c->req.ip, max, (long)time(NULL), window);
+	if (r < 0){
+		// une erreur de base ne doit pas bloquer tout le monde : on laisse passer
+		fprintf(stderr, "cs_rate_limit(%s) : erreur de base, action permise\n", action);
+		return 1;
+	}
+	return r;
 }
 
 /* ---------------------------------------------------------------- fin de requête */

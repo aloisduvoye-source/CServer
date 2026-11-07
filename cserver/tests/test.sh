@@ -7,7 +7,7 @@ cd "$(dirname "$0")/site" || exit 1
 cs_start 8083 ../../..
 
 # --------------------------------------------------------------- migrations
-expected="cserver/001_comptes cserver/002_prefixe_cs site/001_notes"
+expected="cserver/001_comptes cserver/002_prefixe_cs cserver/003_limites site/001_notes"
 got=$(sed -n 's/^migration appliquée : //p' "$DBDIR/server.log" | tr '\n' ' ' | sed 's/ $//')
 [ "$got" = "$expected" ] && pass "migrations dans l'ordre : $got" || fail "migrations : '$got' (attendu '$expected')"
 
@@ -121,6 +121,17 @@ check 303 POST /inscription --data-binary "name=zoe&password=motdepasse2" -c "$Z
 check_contains "Set-Cookie: test_session="  /inscription --data-binary "name=max&password=motdepasse3" -D -
 check_contains "HttpOnly; SameSite=Lax"     /inscription --data-binary "name=lea&password=motdepasse4" -D -
 check_contains "Location: /prive"           /inscription --data-binary "name=tom&password=motdepasse5" -D -   # after_login
+
+# signup_limit = 8 inscriptions par IP : la 8e passe, la 9e est refusée
+check 303 POST /inscription --data-binary "name=ana&password=motdepasse6"
+check 429 POST /inscription --data-binary "name=eve&password=motdepasse7"
+check_contains "too many sign-ups" /inscription --data-binary "name=eve&password=motdepasse7"
+
+# cs_rate_limit : 3 fois par minute, puis 429
+check 200 GET /limite
+check 200 GET /limite
+check 200 GET /limite
+check 429 GET /limite
 
 # --------------------------------------------------------------- comptes : session
 check_contains "bonjour jean" /prive -b "$JEAN"

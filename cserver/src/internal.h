@@ -86,6 +86,8 @@ int  db_session_user(sqlite3 *db, const char *token, long now, cs_user *user);
 void db_session_delete(sqlite3 *db, const char *token);
 
 int  db_login_failures(sqlite3 *db, const char *ip, long since);
+// compte une action ; 1 si elle est permise (moins de max dans la fenêtre), 0 sinon, -1 si erreur
+int  db_rate_limit(sqlite3 *db, const char *action, const char *key, int max, long now, long window);
 void db_login_failure_add(sqlite3 *db, const char *ip, long now, long forget_before);
 
 /* ---------------------------------------------------------------- auth.c */

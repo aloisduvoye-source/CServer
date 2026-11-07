@@ -157,6 +157,14 @@ sqlite3_stmt *cs_db_prepare(sqlite3 *db, const char *sql);
 // exécute une requête qui ne renvoie aucune ligne, puis la libère ; 0 si OK
 int cs_db_run(sqlite3 *db, sqlite3_stmt *stmt);
 
+// contre le spam : compte une action, et renvoie 1 si elle est permise, 0 si `key` l'a
+// déjà faite `max` fois dans les `window` dernières secondes (répondre alors 429).
+// key : NULL pour l'adresse IP du client, ou une clé choisie par le site (un compte...)
+// Les compteurs sont dans la base : partagés par tous les processus. Sans base, ou en
+// cas d'erreur, l'action est permise.
+//   if (!cs_rate_limit(c, "message", NULL, 30, 60)){ cs_error(c, 429); return; }
+int cs_rate_limit(cs_ctx *c, const char *action, const char *key, int max, int window);
+
 // une étape de l'évolution du schéma. Un site les écrit dans migrations/*.sql
 // (un fichier par étape : 001_xxx.sql, 002_yyy.sql...) et le Makefile les intègre
 // au binaire avec cserver/tools/embed.sh, dans un tableau site_migrations.
@@ -286,6 +294,8 @@ typedef struct {
 	int             password_min;  // longueur minimale d'un mot de passe       défaut : 8
 	int             login_attempts;// échecs de connexion autorisés par IP...   défaut : 5
 	int             login_window;  // ... sur cette durée, en secondes          défaut : 900
+	int             signup_limit;  // inscriptions par IP...                    défaut : 5
+	int             signup_window; // ... sur cette durée, en secondes          défaut : 3600
 	const char     *login_path;    // page de connexion (cs_require_user
 	                               // y redirige)                               défaut : "/login"
 	const char     *signup_path;   // page d'inscription                        défaut : "/signup"

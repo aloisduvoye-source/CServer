@@ -33,6 +33,15 @@ static void slow(cs_ctx *c){
 	send_text(c, "fini");
 }
 
+// GET /limite : au plus 3 fois par minute et par IP
+static void limited(cs_ctx *c){
+	if (!cs_rate_limit(c, "test", NULL, 3, 60)){
+		cs_error(c, 429);
+		return;
+	}
+	send_text(c, "permis");
+}
+
 // des handlers mal écrits : le framework doit rattraper
 static void forgets(cs_ctx *c){
 	(void)c;
@@ -184,6 +193,7 @@ static const cs_route routes[] = {
 	CS_GET ("/p/:a/x/:b",  params),
 	CS_GET ("/oublie",     forgets),
 	CS_GET ("/lent",       slow),
+	CS_GET ("/limite",     limited),
 	CS_GET ("/deux",       twice),
 	CS_GET ("/vars",       vars),
 	CS_GET ("/casse",      broken),
@@ -216,6 +226,7 @@ int main(void){
 		.password_min   = 10,
 		.login_attempts = 3,
 		.login_window   = 600,
+		.signup_limit   = 8,     // les tests font 7 inscriptions valides, la 9e est refusée
 		.login_path     = "/connexion",
 		.signup_path    = "/inscription",
 

@@ -59,6 +59,13 @@ void cs_signup(cs_ctx *c){
 		return;
 	}
 
+	// contre la création de comptes en masse (et le hachage, volontairement lent,
+	// qu'on ferait calculer en boucle au serveur)
+	if (!cs_rate_limit(c, "signup", NULL, cs_config.signup_limit, cs_config.signup_window)){
+		send_form(c, 429, 1, name, "too many sign-ups from this address, try again later");
+		return;
+	}
+
 	long id = cs_user_create(c, name, password);
 	if (id == 0){
 		send_form(c, 409, 1, name, "this name is already taken");

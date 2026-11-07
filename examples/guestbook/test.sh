@@ -7,7 +7,7 @@ cd "$(dirname "$0")" || exit 1
 cs_start 8081
 
 # migrations : celles du framework, puis celles du site, dans l'ordre
-expected="cserver/001_comptes cserver/002_prefixe_cs site/001_messages site/002_supprimer_counters"
+expected="cserver/001_comptes cserver/002_prefixe_cs cserver/003_limites site/001_messages site/002_supprimer_counters"
 got=$(sed -n 's/^migration appliquée : //p' "$DBDIR/server.log" | tr '\n' ' ' | sed 's/ $//')
 [ "$got" = "$expected" ] && pass "migrations appliquées : $got" || fail "migrations : '$got' (attendu '$expected')"
 

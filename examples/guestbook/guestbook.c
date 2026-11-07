@@ -1,3 +1,4 @@
+#include<stdio.h>
 #include<string.h>
 #include<ctype.h>
 #include"cserver.h"
@@ -8,6 +9,18 @@
 // le serveur limite en OCTETS : en UTF-8 un caractère prend jusqu'à 4 octets
 #define MESSAGE_BYTES (1000 * 4)
 #define LIST_LIMIT    100
+
+// contre le spam : au plus 30 messages par minute et par compte
+#define MESSAGES_PER_MINUTE 30
+
+// 1 si l'utilisateur peut encore poster ; la clé est son compte, pas son IP
+// (plusieurs personnes peuvent partager une IP ; les comptes, eux, sont limités
+// par le framework : signup_limit inscriptions par IP)
+static int may_post(cs_ctx *c, const cs_user *user){
+	char key[32];
+	snprintf(key, sizeof(key), "user:%ld", user->id);
+	return cs_rate_limit(c, "message", key, MESSAGES_PER_MINUTE, 60);
+}
 
 /* ------------------------------------------------------------------ outils */
 
@@ -113,6 +126,10 @@ void guestbook_post(cs_ctx *c){
 		cs_error(c, 400);
 		return;
 	}
+	if (!may_post(c, user)){
+		cs_error(c, 429);
+		return;
+	}
 
 	// le nom vient du compte, plus du formulaire : impossible de se faire passer pour un autre
 	if (messages_add(cs_db(c), user->id, user->name, message, NULL, NULL) < 0){
@@ -197,6 +214,10 @@ void api_messages_post(cs_ctx *c){
 	const char *error = read_message(c, message);
 	if (error != NULL){
 		cs_json_error(c, 400, error);
+		return;
+	}
+	if (!may_post(c, user)){
+		cs_json_error(c, 429, "too many messages, slow down");
 		return;
 	}
 

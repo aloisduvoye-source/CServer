@@ -96,6 +96,8 @@ static int load_config(const cs_app *app){
 	if (cs_config.password_min == 0)   {cs_config.password_min = 8;}
 	if (cs_config.login_attempts == 0) {cs_config.login_attempts = 5;}
 	if (cs_config.login_window == 0)   {cs_config.login_window = 15 * 60;}
+	if (cs_config.signup_limit == 0)   {cs_config.signup_limit = 5;}
+	if (cs_config.signup_window == 0)  {cs_config.signup_window = 3600;}
 	if (cs_config.login_path == NULL)  {cs_config.login_path = "/login";}
 	if (cs_config.signup_path == NULL) {cs_config.signup_path = "/signup";}
 	if (cs_config.max_connections == 0){cs_config.max_connections = 64;}
@@ -113,7 +115,8 @@ static int load_config(const cs_app *app){
 	int name_room = (int)sizeof(((cs_user *)0)->name) - 1;
 	if (cs_config.username_min < 1 || cs_config.username_max > name_room
 	 || cs_config.username_min > cs_config.username_max || cs_config.password_min < 1
-	 || cs_config.login_attempts < 1 || cs_config.login_window < 1){
+	 || cs_config.login_attempts < 1 || cs_config.login_window < 1
+	 || cs_config.signup_limit < 1 || cs_config.signup_window < 1){
 		fprintf(stderr, "règles des comptes invalides (noms : 1 à %d caractères)\n", name_room);
 		return -1;
 	}

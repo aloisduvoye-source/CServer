@@ -1,3 +1,4 @@
+#include<stdio.h>
 #include<ctype.h>
 #include"cserver.h"
 #include"todos.h"
@@ -70,6 +71,15 @@ void todos_create(cs_ctx *c){
 	char title[TITLE_BYTES + 1];
 	if (cs_form(c, "title", title, sizeof(title)) < 0 || is_blank(title) || !cs_utf8_valid(title)){
 		cs_error(c, 400);
+		return;
+	}
+
+	// au plus 60 tâches par minute et par compte : de quoi taper vite, pas de quoi
+	// remplir la base avec un script
+	char key[32];
+	snprintf(key, sizeof(key), "user:%ld", user->id);
+	if (!cs_rate_limit(c, "todo", key, 60, 60)){
+		cs_error(c, 429);
 		return;
 	}
 
