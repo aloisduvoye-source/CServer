@@ -75,6 +75,8 @@ case $page in
 	*'[]</p>|<p id="ligne-seule">'*'</p>|<p id="fin">'*) pass "balises seules sur leur ligne : pas de ligne vide" ;;
 	*) fail "lignes vides autour des balises de section" ;;
 esac
+check_contains "<h1>modèle en sous-dossier</h1>" /sous         # templates/sous/dossier/page.html
+check_contains "color: navy" /css/theme/bleu.css               # www/css/theme/bleu.css
 check 500 GET /casse                           # section jamais fermée
 check 500 GET /absent                          # modèle introuvable
 grep -q "modèle casse.html : {{#jamais}} sans {{/jamais}}" "$DBDIR/server.log" \

@@ -171,6 +171,7 @@ static const cs_route routes[] = {
 	CS_GET ("/entete",     headers),
 	CS_GET ("/hash",       hash),
 	CS_PAGE("/", "index.html", "accueil"),
+	CS_PAGE("/sous", "sous/dossier/page.html", "sous"),
 	CS_GET ("/echo",       echo),
 	CS_POST("/echo",       echo),
 	CS_GET ("/p/:a/x/:b",  params),
