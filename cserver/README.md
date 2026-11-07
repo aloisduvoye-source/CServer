@@ -126,7 +126,8 @@ mon-site/
   Makefile            include cserver/cserver.mk
   cserver/            le framework (copie ou sous-module)
   main.c, *.c, *.h    le code (compilé avec la bibliothèque)
-  templates/          modèles HTML, relus à chaque requête
+  src/                la suite du code, rangée comme on veut : src/pages/admin.c...
+  templates/          modèles HTML, relus à chaque requête (sous-dossiers possibles)
   www/                fichiers publics, servis tels quels (CSS, JS, images)
   migrations/         001_xxx.sql, 002_yyy.sql... : les tables du site
   data/site.db        la base, créée automatiquement
@@ -136,6 +137,15 @@ mon-site/
 **Rien n'est obligatoire** : sans `www/`, aucun fichier statique ; sans `templates/`, les modèles par défaut du framework ; sans base ni comptes, pas de `data/`. Les noms des dossiers se changent dans la [configuration](#configuration).
 
 `www/` est public : tout ce qu'il contient se télécharge tel quel. Les modèles et la base sont donc à côté, jamais dedans.
+
+**Avec beaucoup de fichiers**, on les range dans des sous-dossiers :
+
+| Fichiers | Sous-dossiers |
+|---|---|
+| `.c` et `.h` | dans `src/`, à n'importe quelle profondeur. Les en-têtes s'incluent par leur chemin depuis `src/` : `#include "pages/admin.h"` pour `src/pages/admin.h`. Deux fichiers peuvent avoir le même nom dans deux dossiers |
+| `templates/` | oui : `cs_page(c, 200, "admin/users.html", &v)` charge `templates/admin/users.html` |
+| `www/` | oui : `www/css/style.css` est servi à `/css/style.css` |
+| `migrations/` | non, volontairement : l'ordre alphabétique des noms donne l'ordre d'application, il doit rester sans ambiguïté |
 
 ## Routes
 
@@ -336,6 +346,8 @@ Dans le dossier du projet :
 | `make run` | le lance (depuis son dossier, pour trouver `www/` et `data/`) |
 | `make test` | lance `test.sh` |
 | `make clean` | supprime tout ce qui est généré (`server`, `build/`) |
+
+Chaque `.c` du site est compilé à part (dans `build/obj/`), et le compilateur retient quels `.h` il inclut : après une modification, seuls les fichiers concernés sont recompilés.
 
 Le framework est compilé en `libcserver.a` (dans `build/cserver/`), avec ses migrations et ses modèles par défaut intégrés. Seuls les noms `cs_*` en sortent : un site peut avoir ses propres fonctions `route()` ou `db_open()` sans conflit.
 

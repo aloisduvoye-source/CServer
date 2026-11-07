@@ -34,12 +34,18 @@ CS_TPL    = $(sort $(wildcard $(CSERVER_DIR)/templates/*.html))
 CS_HDR    = $(wildcard $(CSERVER_DIR)/include/*.h $(CSERVER_DIR)/src/*.h)
 CS_OBJ    = $(CS_SRC:$(CSERVER_DIR)/src/%.c=$(CS_BUILD)/%.o) $(CS_BUILD)/migrations.o $(CS_BUILD)/templates.o
 
-# --- le site
-SITE_SRC  = $(wildcard $(CS_P)*.c)
-SITE_HDR  = $(wildcard $(CS_P)*.h)
+# --- le site : les .c à sa racine, et tous ceux de src/, à n'importe quelle profondeur
+#     (src/pages/admin.c...). Les en-têtes s'incluent par leur chemin depuis src/ :
+#     #include "pages/admin.h"
+SITE_SRC  = $(wildcard $(CS_P)*.c) $(sort $(shell find $(CS_P)src -name '*.c' 2>/dev/null))
 SITE_SQL  = $(sort $(wildcard $(CS_P)migrations/*.sql))
 SITE_GEN  = $(CS_P)build/migrations.c
 SITE_BIN  = $(CS_P)server
+
+# un .o par .c, dans build/obj/ en reproduisant l'arborescence : src/a/util.c et
+# src/b/util.c ne se gênent pas. Seuls les .c modifiés sont recompilés.
+SITE_OBJ  = $(patsubst $(CS_P)%.c,$(CS_P)build/obj/%.o,$(SITE_SRC) $(SITE_GEN))
+SITE_INC  = -I$(CS_P). -I$(CS_P)src
 
 # pas encore de fichier .c : un message clair plutôt qu'une erreur de compilation
 CS_HINT ?= ajouter un main.c
@@ -47,9 +53,17 @@ ifeq ($(strip $(SITE_SRC)),)
 $(SITE_BIN):
 	@echo "aucun fichier .c dans « $(SITE_DIR) » : $(CS_HINT)"; exit 1
 else
-$(SITE_BIN): $(SITE_SRC) $(SITE_HDR) $(SITE_GEN) $(CS_LIB)
-	$(CC) $(CS_FLAGS) $(SITE_SRC) $(SITE_GEN) $(CS_LIB) -o $@ $(LDLIBS)
+$(SITE_BIN): $(SITE_OBJ) $(CS_LIB)
+	$(CC) $(SITE_OBJ) $(CS_LIB) -o $@ $(LDLIBS)
 endif
+
+# -MMD -MP : le compilateur écrit, à côté de chaque .o, la liste des .h qu'il inclut
+# (fichier .d) ; modifier un .h ne recompile que les .c qui l'utilisent
+$(CS_P)build/obj/%.o: $(CS_P)%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CS_FLAGS) $(SITE_INC) -MMD -MP -c $< -o $@
+
+-include $(SITE_OBJ:.o=.d)
 
 # intégrés au binaire : chaque fichier devient une chaîne C (embed.sh)
 #  - les migrations (.sql), du site et du framework
