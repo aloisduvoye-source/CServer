@@ -32,7 +32,7 @@ static void handle_client(int client, const char *ip){
 	}
 
 	if (r > 0){
-		http_send_error(client, r);
+		http_send_error(client, r, NULL);
 	}
 	http_free(&c.req);
 }

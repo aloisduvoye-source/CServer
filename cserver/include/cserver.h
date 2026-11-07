@@ -34,6 +34,7 @@ typedef struct {
 	int        user_state;  // 0 : pas encore cherché, 1 : connecté, -1 : anonyme
 	cs_user    user;
 	int        responded;   // une réponse est déjà partie
+	char       headers[1024];  // en-têtes ajoutés par cs_header(), pour la réponse à venir
 
 	// interne : passer par cs_param() ; segments capturés par une route "/x/:nom"
 	int        params_count;
@@ -94,6 +95,10 @@ void cs_json(cs_ctx *c, int status, cs_buf *json);   // envoie puis libère (500
 void cs_json_error(cs_ctx *c, int status, const char *message);   // {"error":"..."}
 void cs_error(cs_ctx *c, int status);                // page d'erreur minimale
 void cs_redirect(cs_ctx *c, const char *location);   // 303 See Other
+
+// ajoute un en-tête à la réponse qui va partir, ex : cs_header(c, "Cache-Control: no-store")
+// (refusé s'il contient un retour à la ligne : ce serait une injection d'en-têtes)
+void cs_header(cs_ctx *c, const char *line);
 
 /* ================================================================ modèles HTML */
 // Les modèles sont des fichiers HTML dans templates/ (cs_app.templates_dir), relus à
@@ -171,7 +176,35 @@ const cs_user *cs_current_user(cs_ctx *c);
 // pareil, mais si personne n'est connecté : redirige vers /login et renvoie NULL
 const cs_user *cs_require_user(cs_ctx *c);
 
-// pages et actions prêtes à l'emploi (modèles login.html et signup.html) ;
+// --- les briques : pour écrire ses propres pages de comptes (connexion par e-mail,
+// par API, inscription sur invitation...) sans réécrire les parties délicates.
+// Les pages prêtes à l'emploi plus bas sont écrites uniquement avec elles.
+
+#define CS_HASH_MAX 384   // taille suffisante pour un hachage
+
+// yescrypt avec un sel aléatoire ; 0, ou -1 si erreur
+int  cs_password_hash(const char *password, char *out, size_t size);
+// 1 si correct. Comparaison en temps constant ; avec hash = NULL (utilisateur
+// inconnu), le calcul a lieu quand même : la durée ne révèle rien
+int  cs_password_verify(const char *password, const char *hash);
+
+// crée un compte (mot de passe haché) ; son id, 0 si le nom est déjà pris, -1 si erreur.
+// Ne vérifie pas le format du nom ni la longueur du mot de passe : c'est au site.
+long cs_user_create(cs_ctx *c, const char *name, const char *password);
+
+// vérifie nom + mot de passe (name ou password peuvent être NULL) : même durée que
+// le nom existe ou non ; après 5 échecs en 15 minutes depuis la même IP, refuse
+// sans vérifier. Si CS_LOGIN_OK, user est rempli.
+enum { CS_LOGIN_OK = 1, CS_LOGIN_WRONG = 0, CS_LOGIN_ERROR = -1, CS_LOGIN_BLOCKED = -2 };
+int  cs_user_login(cs_ctx *c, const char *name, const char *password, cs_user *user);
+
+// ouvre une session : ajoute le cookie (HttpOnly, SameSite=Lax) à la réponse qui va
+// partir, quelle qu'elle soit (cs_redirect, cs_json...) ; 0, ou -1 si erreur
+int  cs_session_start(cs_ctx *c, long user_id);
+// ferme la session : supprimée côté serveur, et cookie effacé dans la réponse
+void cs_session_end(cs_ctx *c);
+
+// --- les pages et actions prêtes à l'emploi (modèles login.html et signup.html) ;
 // à déclarer dans les routes du site avec CS_AUTH_ROUTES (demande .accounts = 1)
 void cs_signup_page(cs_ctx *c);
 void cs_signup(cs_ctx *c);

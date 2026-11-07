@@ -137,6 +137,13 @@ check 303 POST /login --data-binary "name=jean&password=motdepasse1" -c "$JEAN"
 check_contains "bonjour jean" /prive -b "$JEAN"
 check 303 POST /login --data-binary "name=JEAN&password=motdepasse1"          # casse ignorée
 
+# connexion par API : écrite par le site de test avec les briques publiques
+API="$DBDIR/api.cookies"
+check_contains '{"user":"jean"}'  /api/login --data-binary "name=jean&password=motdepasse1" -c "$API"
+check_contains "bonjour jean"     /prive -b "$API"
+check_contains '{"ok":true}'      /api/logout --data-binary "" -b "$API" -c "$API"
+check 303 GET /prive -b "$API"
+
 # 5 échecs par IP en 15 minutes, puis blocage
 check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 1
 check_contains "invalid name or password" /login --data-binary "name=inconnu&password=motdepasse1" # 2
@@ -144,6 +151,13 @@ check_contains "invalid name or password" /login --data-binary "name=jean&passwo
 check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 4
 check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 5
 check 429 POST /login --data-binary "name=jean&password=motdepasse1"       # bloqué, même avec le bon
+check_contains '{"error":"too many attempts"}' /api/login --data-binary "name=jean&password=motdepasse1"
+
+# briques : en-têtes et mots de passe
+check_contains "X-Test: oui" /entete -D -
+check_absent   "X-Injecte"   /entete -D -
+grep -q "cs_header : en-tête refusé" "$DBDIR/server.log" && pass "injection d'en-tête refusée" || fail "injection d'en-tête acceptée"
+check_contains "hash ok" "/hash?p=secret"
 
 # --------------------------------------------------------------- redémarrage
 restart_server "$DBDIR/server2.log"

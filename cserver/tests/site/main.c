@@ -113,7 +113,63 @@ static void notes_count(cs_ctx *c){
 	send_text(c, out);
 }
 
+// POST /api/login : une connexion écrite par le site, avec les briques du framework
+static void api_login(cs_ctx *c){
+	char name[64], password[129];
+	int has_name = cs_form(c, "name", name, sizeof(name)) == 0;
+	int has_password = cs_form(c, "password", password, sizeof(password)) == 0;
+
+	cs_user user;
+	switch (cs_user_login(c, has_name ? name : NULL, has_password ? password : NULL, &user)){
+		case CS_LOGIN_OK: {
+			if (cs_session_start(c, user.id) < 0){
+				cs_json_error(c, 500, "session");
+				return;
+			}
+			cs_buf b;
+			cs_buf_init(&b);
+			cs_buf_append(&b, "{\"user\":");
+			cs_buf_append_json(&b, user.name);
+			cs_buf_append(&b, "}\n");
+			cs_json(c, 200, &b);
+			return;
+		}
+		case CS_LOGIN_WRONG:   cs_json_error(c, 401, "wrong name or password"); return;
+		case CS_LOGIN_BLOCKED: cs_json_error(c, 429, "too many attempts");      return;
+		default:               cs_json_error(c, 500, "error");
+	}
+}
+
+static void api_logout(cs_ctx *c){
+	cs_session_end(c);
+	const char *body = "{\"ok\":true}\n";
+	cs_send(c, 200, "application/json", body, strlen(body));
+}
+
+// GET /entete : cs_header, dont une tentative d'injection qui doit être refusée
+static void headers(cs_ctx *c){
+	cs_header(c, "X-Test: oui");
+	cs_header(c, "X-Mauvais: a\r\nX-Injecte: 1");
+	send_text(c, "entetes");
+}
+
+// GET /hash?p=... : cs_password_hash puis cs_password_verify
+static void hash(cs_ctx *c){
+	char p[64], h[CS_HASH_MAX];
+	if (cs_query(c, "p", p, sizeof(p)) < 0 || cs_password_hash(p, h, sizeof(h)) < 0){
+		cs_error(c, 400);
+		return;
+	}
+	int ok = cs_password_verify(p, h) && !cs_password_verify("autre chose", h)
+	      && !cs_password_verify(p, NULL) && strncmp(h, "$y$", 3) == 0;
+	send_text(c, ok ? "hash ok" : "hash faux");
+}
+
 static const cs_route routes[] = {
+	CS_POST("/api/login",  api_login),
+	CS_POST("/api/logout", api_logout),
+	CS_GET ("/entete",     headers),
+	CS_GET ("/hash",       hash),
 	CS_PAGE("/", "index.html", "accueil"),
 	CS_GET ("/echo",       echo),
 	CS_POST("/echo",       echo),

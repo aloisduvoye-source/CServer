@@ -192,43 +192,46 @@ int http_write_all(int fd, const char *buf, size_t len){
 	return 0;
 }
 
-void http_send_header(int client, int status, const char *content_type, size_t len){
-	char header[256];
+// extra : des lignes d'en-têtes en plus ("Set-Cookie: ...\r\n"), ou NULL.
+// Elles doivent venir de NOTRE code (cs_header les vérifie) : un "\r\n" venu
+// d'un utilisateur permettrait d'injecter de faux en-têtes dans la réponse
+void http_send_header(int client, int status, const char *content_type, size_t len, const char *extra){
+	char header[2048];
 	int n = snprintf(header, sizeof(header),
 		"HTTP/1.0 %d %s\r\n"
 		"Content-Type: %s\r\n"
 		"Content-Length: %zu\r\n"
+		"%s"
 		"\r\n",
-		status, status_text(status), content_type, len
+		status, status_text(status), content_type, len, extra != NULL ? extra : ""
 	);
+	if (n < 0 || (size_t)n >= sizeof(header)){return;}
 	http_write_all(client, header, n);
 }
 
-void http_send(int client, int status, const char *content_type, const char *body, size_t len){
-	http_send_header(client, status, content_type, len);
+void http_send(int client, int status, const char *content_type, const char *body, size_t len, const char *extra){
+	http_send_header(client, status, content_type, len, extra);
 	http_write_all(client, body, len);
 }
 
-void http_send_error(int client, int status){
+void http_send_error(int client, int status, const char *extra){
 	char body[128];
 	int len = snprintf(body, sizeof(body), "<h1>%d %s</h1>\n", status, status_text(status));
-	http_send(client, status, "text/html", body, len);
+	http_send(client, status, "text/html", body, len, extra);
 }
 
-// `location` et `extra_headers` doivent venir de NOTRE code : un "\r\n" venu
-// d'un utilisateur permettrait d'injecter de faux en-têtes dans la réponse
-void http_redirect(int client, const char *location, const char *extra_headers){
-	char header[1024];
+void http_redirect(int client, const char *location, const char *extra){
+	char header[2048];
 	int n = snprintf(header, sizeof(header),
 		"HTTP/1.0 303 See Other\r\n"
 		"Location: %s\r\n"
 		"%s"
 		"Content-Length: 0\r\n"
 		"\r\n",
-		location, extra_headers != NULL ? extra_headers : ""
+		location, extra != NULL ? extra : ""
 	);
 	if (n < 0 || (size_t)n >= sizeof(header)){
-		http_send_error(client, 500);
+		http_send_error(client, 500, NULL);
 		return;
 	}
 	http_write_all(client, header, n);

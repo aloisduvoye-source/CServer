@@ -45,7 +45,7 @@ int static_serve(cs_ctx *c){
 		return 0;
 	}
 
-	http_send_header(c->client, 200, content_type(filename), info.st_size);
+	http_send_header(c->client, 200, content_type(filename), info.st_size, c->headers);
 
 	char buffer[4096];
 	ssize_t count;

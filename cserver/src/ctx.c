@@ -56,24 +56,36 @@ static int begin_response(cs_ctx *c){
 
 void cs_send(cs_ctx *c, int status, const char *content_type, const char *body, size_t len){
 	if (begin_response(c)){
-		http_send(c->client, status, content_type, body, len);
+		http_send(c->client, status, content_type, body, len, c->headers);
 	}
 }
 
 void cs_error(cs_ctx *c, int status){
 	if (begin_response(c)){
-		http_send_error(c->client, status);
-	}
-}
-
-void ctx_redirect_with(cs_ctx *c, const char *location, const char *extra_headers){
-	if (begin_response(c)){
-		http_redirect(c->client, location, extra_headers);
+		http_send_error(c->client, status, c->headers);
 	}
 }
 
 void cs_redirect(cs_ctx *c, const char *location){
-	ctx_redirect_with(c, location, NULL);
+	if (begin_response(c)){
+		http_redirect(c->client, location, c->headers);
+	}
+}
+
+void cs_header(cs_ctx *c, const char *line){
+	// un retour à la ligne permettrait d'injecter d'autres en-têtes (ou un corps)
+	if (strpbrk(line, "\r\n") != NULL || strchr(line, ':') == NULL){
+		fprintf(stderr, "cs_header : en-tête refusé (pas de \\r ni de \\n, et un ':' obligatoire)\n");
+		return;
+	}
+	size_t used = strlen(c->headers);
+	size_t n = strlen(line);
+	if (used + n + 3 > sizeof(c->headers)){
+		fprintf(stderr, "cs_header : trop d'en-têtes, \"%s\" ignoré\n", line);
+		return;
+	}
+	memcpy(c->headers + used, line, n);
+	memcpy(c->headers + used + n, "\r\n", 3);
 }
 
 static void send_buf(cs_ctx *c, int status, const char *content_type, cs_buf *b){
@@ -139,7 +151,7 @@ const cs_user *cs_require_user(cs_ctx *c){
 void ctx_finish(cs_ctx *c){
 	if (!c->responded){
 		fprintf(stderr, "%s %s : le handler n'a envoyé aucune réponse\n", c->req.method, c->req.path);
-		http_send_error(c->client, 500);
+		http_send_error(c->client, 500, NULL);
 	}
 	if (c->db != NULL){
 		sqlite3_close(c->db);
