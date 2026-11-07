@@ -14,6 +14,8 @@ char* content_type(char* filename){
 	if (strcmp(dot, ".css") == 0){return "text/css";}
 	if (strcmp(dot, ".png") == 0){return "image/png";}
 	if (strcmp(dot, ".jpg") == 0){return "image/jpeg";}
+	if (strcmp(dot, ".webp") == 0){return "image/webp";}
+
 	return "text/plain";
 }
 
