@@ -22,10 +22,15 @@ static void api_heure(int client, Request *req){
 	send_response(client, 200, "text/plain", body, len);
 }
 
-// exemple : /api/bonjour?nom=Jean+Dupont -> "Bonjour Jean Dupont"
+// exemple : GET  /api/bonjour?nom=Jean+Dupont
+//           POST /api/bonjour  avec le corps "nom=Jean+Dupont" (formulaire)
+//        -> "Bonjour Jean Dupont"
 static void api_bonjour(int client, Request *req){
+	// un formulaire POST a exactement le même format que la query
+	const char *params = strcmp(req->method, "POST") == 0 ? req->body : req->query;
+
 	char nom[128];
-	if (query_get(req->query, "nom", nom, sizeof(nom)) < 0 || nom[0] == '\0'){
+	if (query_get(params, "nom", nom, sizeof(nom)) < 0 || nom[0] == '\0'){
 		strcpy(nom, "inconnu");
 	}
 
@@ -36,8 +41,9 @@ static void api_bonjour(int client, Request *req){
 
 // ajouter une page = ajouter une ligne ici
 static Route routes[] = {
-	{ "GET", "/api/heure",   api_heure },
-	{ "GET", "/api/bonjour", api_bonjour },
+	{ "GET",  "/api/heure",   api_heure },
+	{ "GET",  "/api/bonjour", api_bonjour },
+	{ "POST", "/api/bonjour", api_bonjour },
 };
 
 void route(int client, Request *req){
@@ -55,6 +61,5 @@ void route(int client, Request *req){
 		return;
 	}
 
-	const char *body = "<h1>405 Method Not Allowed</h1>\n";
-	send_response(client, 405, "text/html", body, strlen(body));
+	send_error(client, 405);
 }

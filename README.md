@@ -21,7 +21,7 @@ Objectif : un livre d'or (formulaire + liste des messages).
 - [x] Plusieurs clients en parallèle (`fork`)
 - [x] Routes dynamiques
 - [x] Paramètres d'URL (`?q=...`, décodage `%XX`)
-- [ ] Requêtes POST (lecture selon `Content-Length`)
+- [x] Requêtes POST (lecture selon `Content-Length`)
 - [ ] Stockage dans des fichiers
 - [ ] Échappement HTML (XSS)
 - [ ] API JSON

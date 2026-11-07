@@ -4,7 +4,8 @@
 make -s || exit 1
 ./server > /dev/null &
 PID=$!
-trap 'kill $PID 2>/dev/null' EXIT
+TMP=$(mktemp)
+trap 'kill $PID 2>/dev/null; rm -f "$TMP"' EXIT
 
 for i in $(seq 50); do
 	curl -s -o /dev/null localhost:8080/ && break
@@ -16,12 +17,23 @@ if ! kill -0 $PID 2>/dev/null; then
 fi
 
 FAIL=0
-check() { # check <code attendu> <méthode> <chemin>
-	got=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' -X "$2" "localhost:8080$3")
-	if [ "$got" = "$1" ]; then
-		echo "ok     $2 $3 -> $got"
+check() { # check <code attendu> <méthode> <chemin> [options curl...]
+	code=$1; method=$2; path=$3; shift 3
+	got=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' -X "$method" "$@" "localhost:8080$path")
+	if [ "$got" = "$code" ]; then
+		echo "ok     $method $path $* -> $got"
 	else
-		echo "ECHEC  $2 $3 -> $got (attendu $1)"
+		echo "ECHEC  $method $path $* -> $got (attendu $code)"
+		FAIL=1
+	fi
+}
+
+check_post() { # check_post <corps attendu> <chemin> <données>
+	got=$(curl -s --data-binary "$3" "localhost:8080$2")
+	if [ "$got" = "$1" ]; then
+		echo "ok     POST $2 -> $got"
+	else
+		echo "ECHEC  POST $2 -> $got (attendu $1)"
 		FAIL=1
 	fi
 }
@@ -59,5 +71,16 @@ check_body "Bonjour Zoé"         "/api/bonjour?nom=Zo%C3%A9"
 check_body "Bonjour Tom&Jerry"   "/api/bonjour?x=1&nom=Tom%26Jerry"
 check_body "Bonjour 1+1=2"       "/api/bonjour?nom=1%2B1%3D2"
 check_body "Bonjour inconnu"     "/api/bonjour?nom=%ZZ"
+
+# POST
+BIG=$(head -c 100000 /dev/zero | tr '\0' a)
+check_post "Bonjour Jean Dupont" /api/bonjour "nom=Jean+Dupont"
+check_post "Bonjour Zoé"         /api/bonjour "x=1&nom=Zo%C3%A9"
+check_post "Bonjour Jean"        /api/bonjour "x=$BIG&nom=Jean"   # 100 Ko : plusieurs read()
+check_post "Bonjour inconnu"     /api/bonjour ""
+check 400 POST /api/bonjour -H "Content-Length: abc"
+check 400 POST /api/bonjour -H "Content-Length: -5"
+head -c 2000000 /dev/zero > "$TMP"
+check 413 POST /api/bonjour --data-binary @"$TMP"                 # > 1 Mo
 
 exit $FAIL
