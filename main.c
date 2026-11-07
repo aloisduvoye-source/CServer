@@ -3,6 +3,7 @@
 #include<sys/socket.h>
 #include<netinet/in.h>
 #include<string.h>
+#include<unistd.h>
 
 
 int main(void){
@@ -20,12 +21,36 @@ int main(void){
 	adress.sin_addr.s_addr = INADDR_ANY;
 	adress.sin_port =  htons(8080);
 
+	int yes = 1;
+	setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
 	if (bind(server, (struct sockaddr *)&adress, sizeof(adress)) < 0){
 		perror("bind");
 		exit(1);
 	}
 
-	// renvoie 3 (0-2 prix par in/out/error)
-	printf("socket fd %d\n",server);
+	if (listen(server,10) < 0){
+		perror("listen");
+		exit(1);
+	}
+
+	printf("listening on 8080\n");
+	while (1) {
+		int client = accept(server, NULL, NULL);
+		if (client<0){
+			perror("client");
+			exit(1);
+		}
+		printf("client fd %d\n", client);
+		char *response=
+			"HTTP/1.0 200 OK\r\n"
+			"Content-Type: text/html\r\n"
+			"\r\n"
+			"<h1>Hello World<h1>\n";
+		write(client, response, strlen(response));
+		close(client);
+
+	}
+
 	return 0;
 }
