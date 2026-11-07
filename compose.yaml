@@ -19,7 +19,10 @@ services:
     volumes:
       - site-data:/site/data          # la base SQLite
     networks:
-      - web
+      web:
+        # adresse fixe, comme Caddy : sinon Docker pourrait donner au site celle de
+        # Caddy (la première libre), et Caddy ne démarrerait pas
+        ipv4_address: 172.31.0.3
     restart: unless-stopped
     # pas de "ports" : le site n'est joignable que par Caddy
 
