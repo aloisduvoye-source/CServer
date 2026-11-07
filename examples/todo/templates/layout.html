@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{#title}}{{title}} · {{/title}}{{site_name}}</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <nav><a href="/">{{site_name}}</a>{{#user}} <a href="/todos">my todos</a>{{/user}}
+        <span class="user">{{#user}}{{user}} <form class="inline" method="post" action="/logout"><button class="link">log out</button></form>{{/user}}{{^user}}<a href="/login">log in</a> <a href="/signup">sign up</a>{{/user}}</span></nav>
+    <main>
+{{{content}}}
+    </main>
+</body>
+</html>

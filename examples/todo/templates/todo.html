@@ -1,0 +1,6 @@
+{{! une tâche ; rendu une fois par tâche par todos.c }}
+        <li{{#done}} class="done"{{/done}}>
+            <form class="inline" method="post" action="/todos/{{id}}/done"><button class="check" title="{{#done}}mark as not done{{/done}}{{^done}}mark as done{{/done}}">{{#done}}☑{{/done}}{{^done}}☐{{/done}}</button></form>
+            <span class="title">{{title}}</span>
+            <form class="inline" method="post" action="/todos/{{id}}/delete"><button class="link">delete</button></form>
+        </li>

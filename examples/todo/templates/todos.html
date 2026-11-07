@@ -1,0 +1,13 @@
+    <h1>my todos</h1>
+    <form method="post" action="/todos">
+        <p><input name="title" placeholder="new task" maxlength="200" required autofocus> <button>add</button></p>
+    </form>
+{{#items}}
+    <p class="meta">{{left}} left</p>
+    <ul class="todos">
+{{{items}}}
+    </ul>
+{{/items}}
+{{^items}}
+    <p class="meta">Nothing to do. Enjoy!</p>
+{{/items}}

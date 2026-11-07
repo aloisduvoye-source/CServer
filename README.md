@@ -3,18 +3,20 @@
 Mini framework web en C, tout à la main (bibliothèques : SQLite, et libcrypt pour les mots de passe).
 
 - `cserver/` : le framework, compilé en `libcserver.a` (API : `cserver/include/cserver.h`)
-- `examples/guestbook/` : un site qui l'utilise (livre d'or avec comptes)
+- `examples/guestbook/` : livre d'or avec comptes et API JSON
+- `examples/todo/` : liste de tâches personnelle
 
 ## Compiler et lancer
 
 ```sh
 sudo apt install libsqlite3-dev libcrypt-dev   # une seule fois
-make run
+make run                # le livre d'or
+make SITE=todo run      # la liste de tâches
 ```
 
 Puis ouvrir http://localhost:8080.
 
-Tests : `make test` (sur le port 8081, en parallèle du serveur de dev)
+Tests : `make test-all` (sur d'autres ports, en parallèle du serveur de dev)
 
 ## Plan
 
