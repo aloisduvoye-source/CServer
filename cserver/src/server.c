@@ -39,12 +39,13 @@ static void handle_client(int client, const char *ip){
 
 // copie la configuration du site et complète ce qu'il n'a pas précisé
 static int load_config(const cs_app *app){
-	static const cs_route no_routes[] = { { NULL, NULL, NULL } };
+	static const cs_route no_routes[] = { CS_END };
 
 	cs_config = *app;
 	if (cs_config.name == NULL)        {cs_config.name = "cserver";}
 	if (cs_config.port == 0)           {cs_config.port = 8080;}
 	if (cs_config.static_dir == NULL)  {cs_config.static_dir = "www";}
+	if (cs_config.templates_dir == NULL){cs_config.templates_dir = "templates";}
 	if (cs_config.db_path == NULL)     {cs_config.db_path = "data/site.db";}
 	if (cs_config.routes == NULL)      {cs_config.routes = no_routes;}
 	if (cs_config.cookie_name == NULL) {cs_config.cookie_name = "cs_session";}

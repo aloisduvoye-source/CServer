@@ -1,0 +1,7 @@
+    <h1>log in</h1>
+    <form method="post" action="/login">
+        <p><input name="name" placeholder="name" autocomplete="username" required value="{{name}}"></p>
+        <p><input name="password" type="password" placeholder="password" autocomplete="current-password" required></p>
+        <p><button>log in</button>{{#error}} <span class="error">{{error}}</span>{{/error}}</p>
+    </form>
+    <p>no account? <a href="/signup">sign up</a></p>

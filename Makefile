@@ -1,13 +1,15 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra -g -Icserver/include
 LDLIBS = -lsqlite3 -lcrypt
-SQL2C  = cserver/tools/sql2c.sh
+EMBED  = cserver/tools/embed.sh
 
 # le framework : une bibliothèque statique qui ne connaît aucun site
 LIB     = cserver/libcserver.a
 LIB_SRC = $(wildcard cserver/src/*.c)
 LIB_SQL = $(sort $(wildcard cserver/migrations/*.sql))
-LIB_OBJ = $(LIB_SRC:cserver/src/%.c=cserver/build/%.o) cserver/build/migrations.o
+LIB_TPL = $(sort $(wildcard cserver/templates/*.html))
+LIB_GEN = cserver/build/migrations.o cserver/build/templates.o
+LIB_OBJ = $(LIB_SRC:cserver/src/%.c=cserver/build/%.o) $(LIB_GEN)
 LIB_HDR = $(wildcard cserver/include/*.h cserver/src/*.h)
 
 # le site (un dossier par site dans examples/)
@@ -19,16 +21,23 @@ APP_HDR = $(wildcard $(APP)/*.h)
 $(APP)/server: $(APP_SRC) $(APP_HDR) $(APP)/build/migrations.c $(LIB)
 	$(CC) $(CFLAGS) $(APP_SRC) $(APP)/build/migrations.c $(LIB) -o $@ $(LDLIBS)
 
-# les migrations sont intégrées au binaire : chaque .sql devient une chaîne C
-$(APP)/build/migrations.c: $(APP_SQL) $(SQL2C)
+# intégrés au binaire : chaque fichier devient une chaîne C (embed.sh)
+#  - les migrations (.sql), du site et du framework
+#  - les modèles par défaut du framework (.html) ; ceux du site sont lus au
+#    démarrage de chaque requête, pour pouvoir les modifier sans recompiler
+$(APP)/build/migrations.c: $(APP_SQL) $(EMBED)
 	mkdir -p $(APP)/build
-	sh $(SQL2C) site_migrations $(APP_SQL) > $@
+	sh $(EMBED) cserver.h cs_migration site_migrations .sql $(APP_SQL) > $@
 
-cserver/build/migrations.c: $(LIB_SQL) $(SQL2C) | cserver/build
-	sh $(SQL2C) framework_migrations $(LIB_SQL) > $@
+cserver/build/migrations.c: $(LIB_SQL) $(EMBED) | cserver/build
+	sh $(EMBED) cserver.h cs_migration framework_migrations .sql $(LIB_SQL) > $@
 
-cserver/build/migrations.o: cserver/build/migrations.c $(LIB_HDR)
-	$(CC) $(CFLAGS) -c $< -o $@
+cserver/build/templates.c: $(LIB_TPL) $(EMBED) | cserver/build
+	sh $(EMBED) internal.h embedded_file framework_templates "" $(LIB_TPL) > $@
+
+# fichiers générés : compilés avec l'en-tête interne du framework
+cserver/build/%.o: cserver/build/%.c $(LIB_HDR)
+	$(CC) $(CFLAGS) -Icserver/src -c $< -o $@
 
 # les objets du framework sont réunis en un seul (ld -r), puis objcopy rend locaux
 # tous les symboles sauf cs_* : un site peut avoir sa propre fonction route() ou

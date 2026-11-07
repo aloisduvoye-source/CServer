@@ -1,0 +1,16 @@
+    <h1>guestbook</h1>
+{{#user}}
+    <form id="guestbook-form" method="post" action="/guestbook">
+        <p><textarea name="message" placeholder="message" maxlength="1000" rows="4" required></textarea></p>
+        <p><button>send</button> <span id="error" class="error"></span></p>
+    </form>
+{{/user}}
+{{^user}}
+    <p><a href="/login">log in</a> or <a href="/signup">sign up</a> to leave a message.</p>
+{{/user}}
+    <section id="messages">
+{{{messages}}}
+{{^messages}}
+    <p>No messages yet. Be the first!</p>
+{{/messages}}
+    </section>

@@ -45,9 +45,11 @@ static long parse_id(const char *s){
 
 // contexte passé aux fonctions appelées pour chaque message
 typedef struct {
+	cs_ctx *c;
 	cs_buf *buf;
 	long    user_id;   // utilisateur connecté (0 si personne) : ses messages sont "à lui"
 	int     count;     // JSON : pour savoir s'il faut une virgule
+	int     error;     // HTML : un modèle n'a pas pu être rendu
 } MessageList;
 
 static long current_user_id(cs_ctx *c){
@@ -57,35 +59,22 @@ static long current_user_id(cs_ctx *c){
 
 /* ------------------------------------------------------------------ version HTML */
 
-static const char *FORM =
-	"    <form id=\"guestbook-form\" method=\"post\" action=\"/guestbook\">\n"
-	"        <p><textarea name=\"message\" placeholder=\"message\" maxlength=\"1000\" rows=\"4\" required></textarea></p>\n"
-	"        <p><button>send</button> <span id=\"error\" class=\"error\"></span></p>\n"
-	"    </form>\n";
-
-static const char *LOGIN_INVITE =
-	"    <p><a href=\"/login\">log in</a> or <a href=\"/signup\">sign up</a> to leave a message.</p>\n";
-
-// même structure HTML que render() dans www/guestbook.js
+// un message = le modèle message.html (la boucle se fait ici, en C)
 static void append_message_html(void *ctx, long id, long author_id,
                                 const char *name, const char *message, const char *date){
 	MessageList *list = ctx;
-	cs_buf_append(list->buf, "    <article>\n        <p class=\"meta\"><strong>");
-	cs_buf_append_html(list->buf, name);
-	cs_buf_append(list->buf, "</strong> · ");
-	cs_buf_append_html(list->buf, date);
+	cs_vars v;
+	cs_vars_init(&v);
+	cs_set_long(&v, "id", id);
+	cs_set(&v, "name", name);
+	cs_set(&v, "message", message);
+	cs_set(&v, "date", date);
+	cs_set(&v, "mine", (list->user_id != 0 && author_id == list->user_id) ? "1" : "");
 
-	if (list->user_id != 0 && author_id == list->user_id){
-		cs_buf_append(list->buf,
-			" <form class=\"inline\" method=\"post\" action=\"/guestbook/delete\">"
-			"<input type=\"hidden\" name=\"id\" value=\"");
-		cs_buf_append_long(list->buf, id);
-		cs_buf_append(list->buf, "\"><button class=\"link\">delete</button></form>");
+	if (v.error || cs_render(list->c, list->buf, "message.html", &v) < 0){
+		list->error = 1;
 	}
-
-	cs_buf_append(list->buf, "</p>\n        <p class=\"text\">");
-	cs_buf_append_html(list->buf, message);
-	cs_buf_append(list->buf, "</p>\n    </article>\n");
+	cs_vars_free(&v);
 }
 
 void guestbook_list(cs_ctx *c){
@@ -95,28 +84,24 @@ void guestbook_list(cs_ctx *c){
 		return;
 	}
 
-	cs_buf page;
-	cs_buf_init(&page);
-	cs_page_begin(c, &page, "guestbook", "/guestbook.js");
-	cs_buf_append(&page, "    <h1>guestbook</h1>\n");
-	cs_buf_append(&page, cs_current_user(c) != NULL ? FORM : LOGIN_INVITE);
-	cs_buf_append(&page, "    <section id=\"messages\">\n");
-
-	MessageList list = { &page, current_user_id(c), 0 };
+	cs_buf messages;
+	cs_buf_init(&messages);
+	MessageList list = { c, &messages, current_user_id(c), 0, 0 };
 	int count = messages_each(db, LIST_LIMIT, append_message_html, &list);
-	if (count == 0){
-		cs_buf_append(&page, "    <p>No messages yet. Be the first!</p>\n");
-	}
 
-	cs_buf_append(&page, "    </section>\n");
-	cs_page_end(&page);
-
-	if (count < 0){
-		cs_buf_free(&page);
+	if (count < 0 || list.error || messages.error){
+		cs_buf_free(&messages);
 		cs_error(c, 500);
 		return;
 	}
-	cs_html(c, 200, &page);
+
+	cs_vars v;
+	cs_vars_init(&v);
+	cs_set(&v, "title", "guestbook");
+	cs_set(&v, "script", "/guestbook.js");
+	cs_set_html(&v, "messages", messages.data);   // déjà du HTML : rendu par message.html
+	cs_buf_free(&messages);
+	cs_page(c, 200, "guestbook.html", &v);
 }
 
 void guestbook_post(cs_ctx *c){
@@ -188,7 +173,7 @@ void api_messages_list(cs_ctx *c){
 
 	cs_buf json;
 	cs_buf_init(&json);
-	MessageList list = { &json, current_user_id(c), 0 };
+	MessageList list = { c, &json, current_user_id(c), 0, 0 };
 	cs_buf_append(&json, "[");
 	int count = messages_each(db, LIST_LIMIT, append_message_json, &list);
 	cs_buf_append(&json, "]\n");
@@ -218,7 +203,7 @@ void api_messages_post(cs_ctx *c){
 	// la réponse contient le message créé, tel que la base l'a enregistré
 	cs_buf json;
 	cs_buf_init(&json);
-	MessageList list = { &json, user->id, 0 };
+	MessageList list = { c, &json, user->id, 0, 0 };
 	if (messages_add(cs_db(c), user->id, user->name, message, append_message_json, &list) < 0){
 		cs_buf_free(&json);
 		cs_json_error(c, 500, "database error");

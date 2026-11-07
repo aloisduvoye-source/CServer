@@ -110,34 +110,16 @@ static void start_session(cs_ctx *c, long user_id){
 
 /* ---------------------------------------------------------------- pages */
 
-// formulaire d'inscription (signup = 1) ou de connexion (signup = 0)
+// formulaire d'inscription (signup = 1) ou de connexion (signup = 0) : modèles
+// signup.html et login.html (ceux du framework, ou ceux du site s'il en a)
 // name : valeur à réafficher dans le champ ; error : message, ou NULL
 static void send_form(cs_ctx *c, int status, int signup, const char *name, const char *error){
-	cs_buf page;
-	cs_buf_init(&page);
-	cs_page_begin(c, &page, signup ? "sign up" : "log in", NULL);
-
-	cs_buf_append(&page, signup ? "    <h1>sign up</h1>\n" : "    <h1>log in</h1>\n");
-	cs_buf_append(&page, signup ? "    <form method=\"post\" action=\"/signup\">\n"
-	                            : "    <form method=\"post\" action=\"/login\">\n");
-	cs_buf_append(&page, "        <p><input name=\"name\" placeholder=\"name\" autocomplete=\"username\" required value=\"");
-	cs_buf_append_html(&page, name);   // dans un attribut "..." : le " doit être échappé
-	cs_buf_append(&page, "\"></p>\n");
-	cs_buf_append(&page, signup
-		? "        <p><input name=\"password\" type=\"password\" placeholder=\"password (8+ characters)\" autocomplete=\"new-password\" minlength=\"8\" required></p>\n"
-		: "        <p><input name=\"password\" type=\"password\" placeholder=\"password\" autocomplete=\"current-password\" required></p>\n");
-	cs_buf_append(&page, signup ? "        <p><button>sign up</button>" : "        <p><button>log in</button>");
-	if (error != NULL){
-		cs_buf_append(&page, " <span class=\"error\">");
-		cs_buf_append_html(&page, error);
-		cs_buf_append(&page, "</span>");
-	}
-	cs_buf_append(&page, "</p>\n    </form>\n");
-	cs_buf_append(&page, signup ? "    <p>already registered? <a href=\"/login\">log in</a></p>\n"
-	                            : "    <p>no account? <a href=\"/signup\">sign up</a></p>\n");
-
-	cs_page_end(&page);
-	cs_html(c, status, &page);
+	cs_vars v;
+	cs_vars_init(&v);
+	cs_set(&v, "title", signup ? "sign up" : "log in");
+	cs_set(&v, "name", name);
+	if (error != NULL){cs_set(&v, "error", error);}
+	cs_page(c, status, signup ? "signup.html" : "login.html", &v);
 }
 
 void cs_signup_page(cs_ctx *c){

@@ -1,0 +1,14 @@
+<!DOCTYPE html>{{! layout par défaut du framework : un site le remplace par son templates/layout.html }}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{#title}}{{title}} · {{/title}}{{site_name}}</title>
+{{#script}}    <script src="{{script}}" defer></script>
+{{/script}}</head>
+<body>
+    <nav><a href="/">{{site_name}}</a>
+        <span class="user">{{#user}}{{user}} <form class="inline" method="post" action="/logout"><button class="link">log out</button></form>{{/user}}{{^user}}<a href="/login">log in</a> <a href="/signup">sign up</a>{{/user}}</span></nav>
+{{{content}}}
+</body>
+</html>

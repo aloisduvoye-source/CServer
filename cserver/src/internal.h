@@ -44,6 +44,18 @@ sqlite3 *db_open(void);
 // généré par le Makefile depuis cserver/migrations/*.sql
 extern const cs_migration framework_migrations[];
 
+/* ---------------------------------------------------------------- template.c, buffer.c */
+
+typedef struct {
+	const char *name;   // ex : "layout.html"
+	const char *text;
+} embedded_file;
+
+// modèles par défaut, générés par le Makefile depuis cserver/templates/*.html
+extern const embedded_file framework_templates[];
+
+void buf_append_n(cs_buf *b, const char *s, size_t n);   // n octets de s, tels quels
+
 // comptes : 0 si le nom est pris, l'id sinon, -1 si erreur
 long db_user_create(sqlite3 *db, const char *name, const char *password_hash);
 int  db_user_find(sqlite3 *db, const char *name, cs_user *user, char *hash, size_t hash_size);

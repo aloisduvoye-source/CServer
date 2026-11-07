@@ -24,7 +24,7 @@ function deleteForm(id) {
     return del;
 }
 
-// même structure HTML que append_message_html() dans src/guestbook.c
+// même structure HTML que templates/message.html
 function render(messages) {
     list.replaceChildren();
 

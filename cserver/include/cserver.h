@@ -83,10 +83,49 @@ void cs_json_error(cs_ctx *c, int status, const char *message);   // {"error":".
 void cs_error(cs_ctx *c, int status);                // page d'erreur minimale
 void cs_redirect(cs_ctx *c, const char *location);   // 303 See Other
 
-// début et fin communs des pages HTML : <head>, style, navigation, utilisateur connecté
-// script : chemin d'un .js à charger, ou NULL
-void cs_page_begin(cs_ctx *c, cs_buf *b, const char *title, const char *script);
-void cs_page_end(cs_buf *b);
+/* ================================================================ modèles HTML */
+// Les modèles sont des fichiers HTML dans templates/ (cs_app.templates_dir), relus à
+// chaque requête : on peut les modifier sans recompiler.
+//
+//   {{nom}}               valeur échappée (< devient &lt;...) : à utiliser par défaut
+//   {{{nom}}}             valeur insérée telle quelle : seulement pour du HTML déjà prêt
+//   {{#nom}}...{{/nom}}   affiché si nom n'est pas vide
+//   {{^nom}}...{{/nom}}   affiché si nom est vide ou absent
+//   {{! commentaire }}    rien
+//
+// Une variable absente vaut "". Toujours disponibles : site_name, et user (le nom de
+// l'utilisateur connecté, ou vide). Les boucles se font en C : rendre un petit modèle
+// par élément avec cs_render(), puis passer le tout au modèle de la page avec cs_set_html().
+//
+// Le framework fournit layout.html, login.html et signup.html ; un fichier du même nom
+// dans le templates/ du site les remplace.
+
+#define CS_VARS_MAX 32
+
+typedef struct {
+	int count;
+	int error;   // 1 si une allocation a échoué, ou s'il y a trop de variables
+	struct {
+		const char *name;   // non copié : une chaîne écrite dans le code, ex : "title"
+		char       *value;  // copiée
+		int         raw;    // 1 : HTML à insérer tel quel
+	} items[CS_VARS_MAX];
+} cs_vars;
+
+void cs_vars_init(cs_vars *v);
+void cs_vars_free(cs_vars *v);
+void cs_set(cs_vars *v, const char *name, const char *text);       // échappée à l'affichage
+void cs_set_html(cs_vars *v, const char *name, const char *html);  // insérée telle quelle
+void cs_set_long(cs_vars *v, const char *name, long n);
+
+// ajoute le modèle `tpl` (ex : "message.html") rendu avec v (ou NULL) à la fin de out
+// renvoie 0, ou -1 si le modèle est introuvable ou mal formé (message dans le terminal)
+int cs_render(cs_ctx *c, cs_buf *out, const char *tpl, const cs_vars *v);
+
+// rend `tpl`, le place dans layout.html, envoie la page, puis libère v.
+// Variables utilisées par le layout : title, script (chemin d'un .js) ; content est
+// rempli avec le résultat de `tpl`. En cas d'erreur de modèle : 500.
+void cs_page(cs_ctx *c, int status, const char *tpl, cs_vars *v);
 
 /* ================================================================ base de données */
 
@@ -101,7 +140,7 @@ int cs_db_run(sqlite3 *db, sqlite3_stmt *stmt);
 
 // une étape de l'évolution du schéma. Un site les écrit dans migrations/*.sql
 // (un fichier par étape : 001_xxx.sql, 002_yyy.sql...) et le Makefile les intègre
-// au binaire avec cserver/tools/sql2c.sh, dans un tableau site_migrations.
+// au binaire avec cserver/tools/embed.sh, dans un tableau site_migrations.
 // Au démarrage, le framework applique dans l'ordre celles qui ne l'ont pas encore
 // été (chacune dans une transaction) et retient leur nom dans la table cs_migrations.
 // Une migration déjà appliquée ne se modifie JAMAIS : on en ajoute une nouvelle.
@@ -119,8 +158,8 @@ const cs_user *cs_current_user(cs_ctx *c);
 // pareil, mais si personne n'est connecté : redirige vers /login et renvoie NULL
 const cs_user *cs_require_user(cs_ctx *c);
 
-// pages et actions prêtes à l'emploi, à déclarer dans les routes du site :
-// GET /signup, POST /signup, GET /login, POST /login, POST /logout
+// pages et actions prêtes à l'emploi (modèles login.html et signup.html) ;
+// à déclarer dans les routes du site avec CS_AUTH_ROUTES
 void cs_signup_page(cs_ctx *c);
 void cs_signup(cs_ctx *c);
 void cs_login_page(cs_ctx *c);
@@ -132,17 +171,41 @@ void cs_logout(cs_ctx *c);
 typedef struct {
 	const char *method;    // "GET", "POST"...
 	const char *path;      // chemin exact, ex : "/guestbook"
-	cs_handler  handler;
+	cs_handler  handler;   // ou NULL : la route affiche simplement le modèle `page`
+	const char *page;      // sans handler : modèle à afficher, ex : "about.html"
+	const char *title;     // sans handler : titre de la page (NULL : le nom du site seul)
 } cs_route;
+
+// pour écrire la table des routes :
+//   static const cs_route routes[] = {
+//       CS_PAGE("/about", "about.html", "about"),   // un modèle, sans code C
+//       CS_GET ("/guestbook", guestbook_list),
+//       CS_POST("/guestbook", guestbook_post),
+//       CS_AUTH_ROUTES,
+//       CS_END
+//   };
+#define CS_GET(p, h)        { .method = "GET",  .path = (p), .handler = (h) }
+#define CS_POST(p, h)       { .method = "POST", .path = (p), .handler = (h) }
+#define CS_PAGE(p, tpl, t)  { .method = "GET",  .path = (p), .page = (tpl), .title = (t) }
+#define CS_END              { .method = NULL }
+
+// inscription, connexion, déconnexion, aux chemins qu'utilisent les modèles du framework
+#define CS_AUTH_ROUTES \
+	CS_GET ("/signup", cs_signup_page), \
+	CS_POST("/signup", cs_signup),      \
+	CS_GET ("/login",  cs_login_page),  \
+	CS_POST("/login",  cs_login),       \
+	CS_POST("/logout", cs_logout)
 
 // tout ce qui est propre à un site ; un champ laissé à 0 ou NULL prend la valeur par défaut
 typedef struct {
 	const char     *name;          // nom du site, affiché dans le <title>      défaut : "cserver"
 	int             port;          // port d'écoute ; CSERVER_PORT l'emporte    défaut : 8080
 	const char     *static_dir;    // dossier des fichiers statiques            défaut : "www"
+	const char     *templates_dir; // dossier des modèles HTML                  défaut : "templates"
 	const char     *db_path;       // base SQLite ; CSERVER_DB l'emporte        défaut : "data/site.db"
 	const cs_migration *migrations;// tables du site, liste terminée par { NULL }
-	const cs_route *routes;        // table terminée par { NULL }
+	const cs_route *routes;        // table terminée par CS_END
 	cs_handler      not_found;     // page 404                                  défaut : page minimale
 	const char     *cookie_name;   // cookie de session : un nom propre au site, car sur localhost
 	                               // le navigateur envoie les cookies de tous les projets

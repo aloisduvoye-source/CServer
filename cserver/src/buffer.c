@@ -97,3 +97,10 @@ void cs_buf_append_long(cs_buf *b, long n){
 	snprintf(num, sizeof(num), "%ld", n);
 	cs_buf_append(b, num);
 }
+
+void buf_append_n(cs_buf *b, const char *s, size_t n){
+	if (buf_reserve(b, n) < 0){return;}
+	memcpy(b->data + b->len, s, n);
+	b->len += n;
+	b->data[b->len] = '\0';
+}

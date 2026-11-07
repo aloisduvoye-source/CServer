@@ -39,5 +39,5 @@ Objectif : réutiliser `cserver/` pour d'autres sites, sans y toucher.
 - [x] Configuration et `cs_run()`
 - [x] Contexte `cs_ctx` passé aux handlers
 - [x] Migrations par nom
-- [ ] Modèles HTML
+- [x] Modèles HTML
 - [ ] Un deuxième site d'exemple

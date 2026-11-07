@@ -89,20 +89,32 @@ check_type() { # check_type <content-type attendu> <chemin>
 	fi
 }
 
-# fichiers statiques
+# modèles : chaque page passe par le layout du site
 check 200 GET  /
-check 200 GET  /about.html
+check 200 GET  /about
+check_contains "<title>cServer</title>"           /                 # CS_PAGE sans titre
+check_contains "<title>about · cServer</title>"   /about
+check_contains "<title>guestbook · cServer</title>" /guestbook
+check_contains "<title>log in · cServer</title>"  /login
+for p in / /about /guestbook /login /signup /nope; do                # la navigation partout
+	check_contains '<a href="/about">about</a> <a href="/guestbook">guestbook</a>' "$p"
+done
+check_contains "no account? <a href=\"/signup\">" /login            # login.html du framework
+check_contains "<h1>Hello World</h1>"             /                 # templates/index.html
+check 404 GET  /about.html                                           # plus un fichier statique
+
+# fichiers statiques
 check 200 GET  /image.webp
-check 200 GET  "/index.html?v=2"
-check 200 GET  /index%2Ehtml
+check 200 GET  "/style.css?v=2"
+check 200 GET  /style%2Ecss
 check 404 GET  /nope.html
 check_contains "404 dumbass" /nope.html                            # la page 404 du site
-check 405 POST /index.html
+check 405 POST /style.css
 check 200 GET  /style.css
 check 200 GET  /guestbook.js
 check_type "text/css"        /style.css
 check_type "text/javascript" /guestbook.js
-check_contains 'href="/style.css"'   /about.html
+check_contains 'href="/style.css"'   /about
 check_contains 'src="/guestbook.js"' /guestbook
 
 # sécurité : test.sh existe juste au-dessus de www/, il ne doit pas être servi
