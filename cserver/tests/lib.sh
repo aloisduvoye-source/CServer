@@ -1,20 +1,24 @@
 # Fonctions communes aux tests des sites. Un test.sh de site commence par :
 #
 #   cd "$(dirname "$0")" || exit 1
-#   . ../../cserver/tests/lib.sh
-#   cs_start 8082        # compile le site, le lance sur ce port, avec une base jetable
+#   . cserver/tests/lib.sh   # (le chemin vers ce fichier)
+#   cs_start 8082 .      # compile le site (Makefile dans "."), le lance sur ce
+#                        # port, avec une base jetable
 #   ...des check...
 #   cs_finish
 #
 # Le port peut être changé : PORT=9000 ./test.sh
 
 # compile le site du dossier courant et lance un serveur de test
-cs_start() { # cs_start <port> [chemin de la racine du dépôt, par défaut ../..]
+cs_start() { # cs_start <port> [dossier du Makefile, par défaut ../..]
 	PORT=${PORT:-$1}
 	BASE="localhost:$PORT"
 	ROOT=${2:-../..}
-	APP=${PWD#"$(cd "$ROOT" && pwd)"/}     # le dossier du site, vu depuis la racine
-	make -s -C "$ROOT" APP="$APP" || exit 1
+
+	# le dossier du site, vu depuis celui du Makefile ("." si c'est le même)
+	root_abs=$(cd "$ROOT" && pwd)
+	if [ "$PWD" = "$root_abs" ]; then SITE_DIR=.; else SITE_DIR=${PWD#"$root_abs"/}; fi
+	make -s -C "$ROOT" SITE_DIR="$SITE_DIR" || exit 1
 
 	DBDIR=$(mktemp -d)
 	TMP=$(mktemp)
