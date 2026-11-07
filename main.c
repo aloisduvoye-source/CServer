@@ -79,7 +79,7 @@ int main(void){
 				"HTTP/1.0 404 not found\r\n"
 				"Content-Type: text/html\r\n"
 				"\r\n"
-				"<h1>404 dumbass<h1>\n";
+				"<h1>404 dumbass</h1>\n";
 			write(client, response, strlen(response));
 			close(client);
 			continue;
@@ -101,7 +101,7 @@ int main(void){
 				"HTTP/1.0 404 not found\r\n"
 				"Content-Type: text/html\r\n"
 				"\r\n"
-				"<h1>404 dumbass<h1>\n";
+				"<h1>404 dumbass</h1>\n";
 			write(client, response, strlen(response));
 			close(client);
 			continue;
