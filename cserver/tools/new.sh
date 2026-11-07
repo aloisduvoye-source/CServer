@@ -29,7 +29,7 @@ case "$CSERVER/" in
 esac
 
 # les fichiers du projet : s'il y en a déjà un, on ne touche à rien
-FILES="main.c test.sh templates/layout.html templates/index.html templates/hello.html www/style.css migrations/001_init.sql"
+FILES="main.c src/pages/hello.c src/pages/hello.h test.sh templates/layout.html templates/index.html templates/hello.html www/style.css migrations/001_init.sql"
 [ $COPY -eq 1 ] && FILES="$FILES cserver"
 for f in $FILES; do
 	if [ -e "$PROJECT/$f" ]; then
@@ -62,21 +62,31 @@ esac
 # un nom de cookie propre au projet : seulement des lettres, chiffres et _
 COOKIE=$(printf '%s' "$NAME" | tr -c 'A-Za-z0-9_' '_')_session
 
-mkdir -p "$PROJECT/templates" "$PROJECT/www" "$PROJECT/migrations"
+mkdir -p "$PROJECT/src/pages" "$PROJECT/templates" "$PROJECT/www" "$PROJECT/migrations"
 
 create_if_absent Makefile <<EOF
 include $CS_REL/cserver.mk
 EOF
 
-cat > "$PROJECT/main.c" <<EOF
-#include<string.h>
+# le code des pages est rangé dans src/ (à n'importe quelle profondeur) ; un
+# en-tête s'inclut par son chemin depuis src/ : #include"pages/hello.h"
+cat > "$PROJECT/src/pages/hello.h" <<'EOF'
+#ifndef PAGES_HELLO_H
+#define PAGES_HELLO_H
+
 #include"cserver.h"
 
-// généré par le Makefile depuis migrations/*.sql
-extern const cs_migration site_migrations[];
+void hello(cs_ctx *c);   // GET /hello?name=...
 
-// GET /hello?name=... : un exemple de handler
-static void hello(cs_ctx *c){
+#endif
+EOF
+
+cat > "$PROJECT/src/pages/hello.c" <<'EOF'
+// un exemple de handler, rangé dans src/pages/
+#include<string.h>
+#include"pages/hello.h"
+
+void hello(cs_ctx *c){
 	char name[64];
 	if (cs_query(c, "name", name, sizeof(name)) < 0){
 		strcpy(name, "world");
@@ -88,6 +98,14 @@ static void hello(cs_ctx *c){
 	cs_set(&v, "name", name);          // échappé à l'affichage
 	cs_page(c, 200, "hello.html", &v);
 }
+EOF
+
+cat > "$PROJECT/main.c" <<EOF
+#include"cserver.h"
+#include"pages/hello.h"            // src/pages/hello.h
+
+// généré par le Makefile depuis migrations/*.sql
+extern const cs_migration site_migrations[];
 
 static const cs_route routes[] = {
 	CS_PAGE("/", "index.html", NULL),  // un modèle, sans code C
