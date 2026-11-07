@@ -66,7 +66,25 @@ http://localhost:8080/hello?name=Zoé affiche « Hello Zoé! » dans le layout p
 
 ## Créer son projet
 
-Un projet vit dans son propre dépôt, avec `cserver` dedans. Deux façons de l'y mettre :
+**En une commande**, depuis le dépôt de cserver :
+
+```sh
+make new DIR=../mon-site
+cd ../mon-site && make run          # puis ouvrir http://localhost:8080
+```
+
+Le générateur ([`tools/new.sh`](tools/new.sh)) crée un projet qui compile et passe ses tests tout de suite : `Makefile`, `main.c` (une page, un handler, les comptes prêts à être décommentés), `templates/` (dont un `layout.html` à personnaliser), `www/style.css`, `migrations/`, `test.sh`, `.gitignore` et `README.md`. Il n'écrit que dans un dossier vide ou inexistant.
+
+- Lancé depuis le dépôt de cserver, il **copie** le framework dans `mon-site/cserver/`.
+- Lancé depuis un cserver qui est **déjà dans le projet** (un sous-module), il l'utilise sur place :
+
+  ```sh
+  mkdir mon-site && cd mon-site && git init
+  git submodule add <url du dépôt cserver> cserver-src
+  sh cserver-src/cserver/tools/new.sh .
+  ```
+
+**À la main**, un projet vit dans son propre dépôt, avec `cserver` dedans. Deux façons de l'y mettre :
 
 **Avec un sous-module git** (recommandé : chaque projet fixe la version qu'il utilise, et la met à jour quand il veut) :
 

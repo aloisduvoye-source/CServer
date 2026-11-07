@@ -14,6 +14,11 @@ SITES     = $(notdir $(wildcard examples/*))
 
 include cserver/cserver.mk
 
+# un nouveau projet, hors de ce dépôt : make new DIR=../mon-site
+new:
+	@test -n "$(DIR)" || { echo "usage : make new DIR=../mon-site"; exit 1; }
+	@sh cserver/tools/new.sh "$(DIR)"
+
 # tous les sites d'un coup
 all:
 	@for s in $(SITES); do $(MAKE) -s SITE=$$s || exit 1; done
@@ -35,4 +40,4 @@ clean::
 	rm -rf cserver/tests/minimal/server cserver/tests/minimal/build
 	rm -f cserver/libcserver.a
 
-.PHONY: all test-cserver test-all
+.PHONY: new all test-cserver test-all

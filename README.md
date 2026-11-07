@@ -18,7 +18,7 @@ Puis ouvrir http://localhost:8080.
 
 Tests : `make test-all` (le framework, puis chaque site ; sur d'autres ports que le serveur de dev)
 
-Pour un nouveau projet, hors de ce dépôt : voir [Créer son projet](cserver/README.md#créer-son-projet).
+Pour un nouveau projet, hors de ce dépôt : `make new DIR=../mon-site` (voir [Créer son projet](cserver/README.md#créer-son-projet)).
 
 ## Plan
 
