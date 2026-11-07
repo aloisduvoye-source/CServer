@@ -5,6 +5,7 @@ Mini framework web en C : un serveur HTTP, des routes, des modèles HTML, une ba
 Un site n'inclut qu'un seul fichier, [`include/cserver.h`](include/cserver.h), où chaque fonction est documentée. Ce guide en donne la vue d'ensemble.
 
 - [Démarrage rapide](#démarrage-rapide)
+- [Créer son projet](#créer-son-projet)
 - [Organisation d'un site](#organisation-dun-site)
 - [Routes](#routes)
 - [Handlers : lire la requête, répondre](#handlers--lire-la-requête-répondre)
@@ -17,10 +18,10 @@ Un site n'inclut qu'un seul fichier, [`include/cserver.h`](include/cserver.h), o
 
 ## Démarrage rapide
 
-Un site est un dossier de `examples/`. Le plus petit tient en un fichier :
+Un site est un dossier qui contient `cserver/` et un Makefile d'une ligne (voir [Créer son projet](#créer-son-projet)). Le plus petit tient en un fichier :
 
 ```c
-// examples/hello/main.c
+// main.c
 #include"cserver.h"
 
 static void hello(cs_ctx *c){
@@ -48,20 +49,59 @@ int main(void){
 ```
 
 ```html
-<!-- examples/hello/templates/hello.html -->
+<!-- templates/hello.html -->
 <h1>Hello {{name}}!</h1>
 ```
 
+```make
+# Makefile
+include cserver/cserver.mk
+```
+
 ```sh
-make SITE=hello run     # depuis la racine du dépôt
+make run
 ```
 
 http://localhost:8080/hello?name=Zoé affiche « Hello Zoé! » dans le layout par défaut du framework. `{{name}}` est échappé : `?name=<script>` s'affiche comme du texte.
 
+## Créer son projet
+
+Un projet vit dans son propre dépôt, avec `cserver` dedans. Deux façons de l'y mettre :
+
+**Avec un sous-module git** (recommandé : chaque projet fixe la version qu'il utilise, et la met à jour quand il veut) :
+
+```sh
+mkdir mon-site && cd mon-site && git init
+git submodule add <url du dépôt cserver> cserver-src
+echo 'include cserver-src/cserver/cserver.mk' > Makefile
+```
+
+Pour récupérer une nouvelle version : `git -C cserver-src pull`, puis commiter le sous-module.
+
+**En copiant le dossier `cserver/`** du dépôt dans le projet (le plus simple, mais les mises à jour se font à la main) :
+
+```sh
+mkdir mon-site && cd mon-site
+cp -r ../chemin/vers/le/depot/cserver cserver
+echo 'include cserver/cserver.mk' > Makefile
+```
+
+Dans les deux cas, le Makefile du projet tient en cette seule ligne, et `make`, `make run`, `make test` et `make clean` fonctionnent. Tout ce que `make` produit (`server`, `build/`) est créé dans le projet : le dossier de cserver n'est jamais modifié. À mettre dans le `.gitignore` du projet :
+
+```
+server
+build/
+data/
+```
+
+Les sites de [`examples/`](../examples/) sont des projets comme les autres : le Makefile du dépôt choisit seulement lequel compiler (`make SITE=todo run`) avant d'inclure `cserver.mk`.
+
 ## Organisation d'un site
 
 ```
-examples/mon-site/
+mon-site/
+  Makefile            include cserver/cserver.mk
+  cserver/            le framework (copie ou sous-module)
   main.c, *.c, *.h    le code (compilé avec la bibliothèque)
   templates/          modèles HTML, relus à chaque requête
   www/                fichiers publics, servis tels quels (CSS, JS, images)
@@ -265,25 +305,27 @@ Une configuration incohérente est refusée au démarrage, avec un message : `CS
 
 ## Compiler et tester
 
-Depuis la racine du dépôt :
+Dans le dossier du projet :
 
 | Commande | Effet |
 |---|---|
-| `make SITE=todo` | compile la bibliothèque et le site |
-| `make SITE=todo run` | le lance (depuis son dossier, pour trouver `www/` et `data/`) |
-| `make SITE=todo test` | lance ses tests |
-| `make test-all` | les tests du framework, puis ceux de chaque site |
-| `make clean` | supprime tout ce qui est généré |
+| `make` | compile la bibliothèque et le site |
+| `make run` | le lance (depuis son dossier, pour trouver `www/` et `data/`) |
+| `make test` | lance `test.sh` |
+| `make clean` | supprime tout ce qui est généré (`server`, `build/`) |
 
-Le framework est compilé en `libcserver.a`, avec ses migrations et ses modèles par défaut intégrés. Seuls les noms `cs_*` en sortent : un site peut avoir ses propres fonctions `route()` ou `db_open()` sans conflit.
+Le framework est compilé en `libcserver.a` (dans `build/cserver/`), avec ses migrations et ses modèles par défaut intégrés. Seuls les noms `cs_*` en sortent : un site peut avoir ses propres fonctions `route()` ou `db_open()` sans conflit.
+
+`cserver.mk` accepte quelques variables, à définir avant l'`include` : `SITE_DIR` (le dossier du site, si le Makefile est ailleurs), `CS_BUILD` (où compiler la bibliothèque), `CFLAGS`.
 
 **Tests d'un site** : un `test.sh` qui inclut [`tests/lib.sh`](tests/lib.sh) :
 
 ```sh
 #!/bin/sh
 cd "$(dirname "$0")" || exit 1
-. ../../cserver/tests/lib.sh
-cs_start 8085                            # compile, lance sur ce port avec une base jetable
+. cserver/tests/lib.sh                   # le chemin vers lib.sh
+cs_start 8085 .                          # compile (Makefile dans "."), lance sur ce
+                                         # port, avec une base jetable
 
 check 200 GET "/hello?name=Zo%C3%A9"
 check 400 GET /hello                                        # sans name
@@ -294,7 +336,7 @@ check_absent   "<script>"             "/hello?name=%3Cscript%3E"
 cs_finish
 ```
 
-Le framework a ses propres tests ([`tests/test.sh`](tests/test.sh), et [`tests/minimal/`](tests/minimal/) pour un site sans base ni comptes).
+Le framework a ses propres tests ([`tests/test.sh`](tests/test.sh), et [`tests/minimal/`](tests/minimal/) pour un site sans base ni comptes). Dans le dépôt, `make test-all` les lance, puis ceux de chaque exemple.
 
 ## Limites connues
 
