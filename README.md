@@ -2,7 +2,7 @@
 
 Mini framework web en C, tout à la main (bibliothèques : SQLite, et libcrypt pour les mots de passe).
 
-- `cserver/` : le framework, compilé en `libcserver.a` (API : `cserver/include/cserver.h`)
+- `cserver/` : le framework, compilé en `libcserver.a` — **[guide du framework](cserver/README.md)**
 - `examples/guestbook/` : livre d'or avec comptes et API JSON
 - `examples/todo/` : liste de tâches personnelle
 
