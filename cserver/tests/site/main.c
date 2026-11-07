@@ -136,6 +136,7 @@ int main(void){
 		.name        = "test",
 		.migrations  = site_migrations,
 		.routes      = routes,
+		.accounts    = 1,
 		.cookie_name = "test_session",
 		.after_login = "/prive",
 	};

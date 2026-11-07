@@ -105,8 +105,8 @@ void cs_redirect(cs_ctx *c, const char *location);   // 303 See Other
 //   {{^nom}}...{{/nom}}   affiché si nom est vide ou absent
 //   {{! commentaire }}    rien
 //
-// Une variable absente vaut "". Toujours disponibles : site_name, et user (le nom de
-// l'utilisateur connecté, ou vide). Les boucles se font en C : rendre un petit modèle
+// Une variable absente vaut "". Toujours disponibles : site_name, user (le nom de
+// l'utilisateur connecté, ou vide) et accounts ("1" si le site a des comptes). Les boucles se font en C : rendre un petit modèle
 // par élément avec cs_render(), puis passer le tout au modèle de la page avec cs_set_html().
 //
 // Le framework fournit layout.html, login.html et signup.html ; un fichier du même nom
@@ -164,6 +164,7 @@ typedef struct {
 } cs_migration;
 
 /* ================================================================ comptes */
+// seulement avec .accounts = 1 dans cs_app ; sinon personne n'est jamais connecté
 
 // utilisateur connecté, ou NULL
 const cs_user *cs_current_user(cs_ctx *c);
@@ -171,7 +172,7 @@ const cs_user *cs_current_user(cs_ctx *c);
 const cs_user *cs_require_user(cs_ctx *c);
 
 // pages et actions prêtes à l'emploi (modèles login.html et signup.html) ;
-// à déclarer dans les routes du site avec CS_AUTH_ROUTES
+// à déclarer dans les routes du site avec CS_AUTH_ROUTES (demande .accounts = 1)
 void cs_signup_page(cs_ctx *c);
 void cs_signup(cs_ctx *c);
 void cs_login_page(cs_ctx *c);
@@ -216,10 +217,16 @@ typedef struct {
 	int             port;          // port d'écoute ; CSERVER_PORT l'emporte    défaut : 8080
 	const char     *static_dir;    // dossier des fichiers statiques            défaut : "www"
 	const char     *templates_dir; // dossier des modèles HTML                  défaut : "templates"
-	const char     *db_path;       // base SQLite ; CSERVER_DB l'emporte        défaut : "data/site.db"
-	const cs_migration *migrations;// tables du site, liste terminée par { NULL }
 	const cs_route *routes;        // table terminée par CS_END
 	cs_handler      not_found;     // page 404                                  défaut : page minimale
+
+	// base de données : seulement si le site en a besoin. Elle existe dès que
+	// db_path, migrations ou accounts est renseigné ; sinon cs_db() renvoie NULL.
+	const char     *db_path;       // base SQLite ; CSERVER_DB l'emporte        défaut : "data/site.db"
+	const cs_migration *migrations;// tables du site, liste terminée par { NULL }
+
+	// comptes : tables cs_users et cs_sessions, cs_current_user(), CS_AUTH_ROUTES
+	int             accounts;      // 1 pour les activer                        défaut : 0
 	const char     *cookie_name;   // cookie de session : un nom propre au site, car sur localhost
 	                               // le navigateur envoie les cookies de tous les projets
 	                               //                                           défaut : "cs_session"

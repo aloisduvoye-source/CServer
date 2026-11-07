@@ -40,6 +40,7 @@ int main(void){
 		.migrations    = site_migrations,
 		.routes        = routes,
 		.not_found     = not_found,
+		.accounts      = 1,
 		.cookie_name   = "cserver_session",
 		.after_login   = "/guestbook",
 	};

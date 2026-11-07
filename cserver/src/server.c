@@ -46,7 +46,6 @@ static int load_config(const cs_app *app){
 	if (cs_config.port == 0)           {cs_config.port = 8080;}
 	if (cs_config.static_dir == NULL)  {cs_config.static_dir = "www";}
 	if (cs_config.templates_dir == NULL){cs_config.templates_dir = "templates";}
-	if (cs_config.db_path == NULL)     {cs_config.db_path = "data/site.db";}
 	if (cs_config.routes == NULL)      {cs_config.routes = no_routes;}
 	if (cs_config.cookie_name == NULL) {cs_config.cookie_name = "cs_session";}
 	if (cs_config.after_login == NULL) {cs_config.after_login = "/";}
@@ -55,12 +54,29 @@ static int load_config(const cs_app *app){
 	// tourner sur un autre port, avec une base jetable
 	const char *port = getenv("CSERVER_PORT");
 	if (port != NULL){cs_config.port = atoi(port);}
-	const char *db = getenv("CSERVER_DB");
-	if (db != NULL){cs_config.db_path = db;}
-
 	if (cs_config.port <= 0 || cs_config.port > 65535){
 		fprintf(stderr, "port invalide : %d\n", cs_config.port);
 		return -1;
+	}
+
+	// une base seulement si le site en a besoin
+	int wants_db = cs_config.db_path != NULL || cs_config.migrations != NULL || cs_config.accounts;
+	if (wants_db){
+		const char *db = getenv("CSERVER_DB");
+		if (db != NULL)                {cs_config.db_path = db;}
+		if (cs_config.db_path == NULL) {cs_config.db_path = "data/site.db";}
+	}
+
+	// les pages de comptes du framework ne marchent pas sans comptes : autant le dire
+	// tout de suite plutôt qu'à la première visite
+	for (const cs_route *r = cs_config.routes; r->method != NULL; r++){
+		int auth_page = r->handler == cs_signup_page || r->handler == cs_signup
+		             || r->handler == cs_login_page  || r->handler == cs_login
+		             || r->handler == cs_logout;
+		if (auth_page && !cs_config.accounts){
+			fprintf(stderr, "route %s %s : les pages de comptes demandent .accounts = 1\n", r->method, r->path);
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -101,7 +117,7 @@ int cs_run(const cs_app *app){
 		return 1;
 	}
 
-	if (db_init() < 0){
+	if (cs_config.db_path != NULL && db_init() < 0){
 		return 1;
 	}
 

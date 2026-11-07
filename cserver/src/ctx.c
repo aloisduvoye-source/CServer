@@ -106,6 +106,10 @@ void cs_json_error(cs_ctx *c, int status, const char *message){
 /* ---------------------------------------------------------------- base et compte */
 
 sqlite3 *cs_db(cs_ctx *c){
+	if (cs_config.db_path == NULL){
+		fprintf(stderr, "cs_db : ce site n'a pas de base (ni db_path, ni migrations, ni accounts)\n");
+		return NULL;
+	}
 	if (c->db == NULL){
 		c->db = db_open();
 	}
@@ -113,6 +117,8 @@ sqlite3 *cs_db(cs_ctx *c){
 }
 
 const cs_user *cs_current_user(cs_ctx *c){
+	if (!cs_config.accounts){return NULL;}
+
 	// cherché une seule fois par requête, même si plusieurs fonctions le demandent
 	if (c->user_state == 0){
 		c->user_state = auth_lookup_user(c, &c->user) ? 1 : -1;

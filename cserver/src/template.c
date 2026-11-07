@@ -71,6 +71,9 @@ static const char *lookup(cs_ctx *c, const cs_vars *v, const char *name, int *ra
 	if (strcmp(name, "site_name") == 0){
 		return cs_config.name;
 	}
+	if (strcmp(name, "accounts") == 0){
+		return cs_config.accounts ? "1" : "";
+	}
 	if (strcmp(name, "user") == 0){
 		const cs_user *user = cs_current_user(c);
 		return user != NULL ? user->name : "";

@@ -128,7 +128,7 @@ int db_init(void){
 		");") == 0;
 
 	// d'abord le framework : les tables du site peuvent faire référence à cs_users
-	if (ok){ok = apply_migrations(db, "cserver", framework_migrations) == 0;}
+	if (ok && cs_config.accounts){ok = apply_migrations(db, "cserver", framework_migrations) == 0;}
 	if (ok && cs_config.migrations != NULL){ok = apply_migrations(db, "site", cs_config.migrations) == 0;}
 
 	sqlite3_close(db);

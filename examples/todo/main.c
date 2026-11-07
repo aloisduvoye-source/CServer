@@ -22,6 +22,7 @@ int main(void){
 		.name        = "todo",
 		.migrations  = site_migrations,
 		.routes      = routes,
+		.accounts    = 1,
 		.cookie_name = "todo_session",
 		.after_login = "/todos",
 	};

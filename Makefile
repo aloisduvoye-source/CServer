@@ -72,14 +72,17 @@ all:
 # les tests du framework, sur son site de test (cserver/tests/site/)
 test-cserver:
 	cserver/tests/test.sh
+	cserver/tests/minimal/test.sh
 
 test-all:
 	@echo "== cserver"; cserver/tests/test.sh || exit 1
+	@echo "== minimal"; cserver/tests/minimal/test.sh || exit 1
 	@for s in $(SITES); do echo "== $$s"; $(MAKE) -s SITE=$$s test || exit 1; done
 
 clean:
 	rm -rf cserver/build $(LIB) $(SITES:%=examples/%/server) $(SITES:%=examples/%/build)
 	rm -rf cserver/tests/site/server cserver/tests/site/build
+	rm -rf cserver/tests/minimal/server cserver/tests/minimal/build
 
 # si une commande échoue, on ne garde pas un fichier généré à moitié
 .DELETE_ON_ERROR:
