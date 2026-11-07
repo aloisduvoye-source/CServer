@@ -255,6 +255,15 @@ typedef struct {
 	const cs_route *routes;        // table terminée par CS_END
 	cs_handler      not_found;     // page 404                                  défaut : page minimale
 
+	// limites (0 : la valeur par défaut). Chaque connexion est un processus : sans
+	// plafond, 10 000 connexions en feraient 10 000. Au-delà de max_connections,
+	// les suivantes attendent qu'une place se libère.
+	int             max_connections; // connexions traitées en même temps      défaut : 64
+	int             read_timeout;  // secondes pour recevoir TOUTE la requête,
+	                               // et pour chaque écriture vers le client      défaut : 10
+	int             request_timeout; // secondes au total, handler compris :
+	                               // au-delà, le processus est arrêté            défaut : 30
+
 	// base de données : seulement si le site en a besoin. Elle existe dès que
 	// db_path, migrations ou accounts est renseigné ; sinon cs_db() renvoie NULL.
 	const char     *db_path;       // base SQLite ; CSERVER_DB l'emporte        défaut : "data/site.db"

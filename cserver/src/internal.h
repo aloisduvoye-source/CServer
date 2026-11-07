@@ -12,9 +12,9 @@ extern cs_app cs_config;
 
 /* ---------------------------------------------------------------- http.c */
 
-// lit et analyse la requête (en-têtes + corps)
-// renvoie 0 si OK, -1 si rien reçu, sinon le code HTTP d'erreur à renvoyer (400, 413...)
-int  http_parse(int client, cs_request *req);
+// lit et analyse la requête (en-têtes + corps), qui doit arriver en `timeout` secondes
+// renvoie 0 si OK, -1 si rien reçu, sinon le code HTTP d'erreur à renvoyer (400, 408, 413...)
+int  http_parse(int client, cs_request *req, int timeout);
 void http_free(cs_request *req);
 
 int  http_cookie_get(const cs_request *req, const char *name, char *out, size_t out_size);

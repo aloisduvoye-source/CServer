@@ -4,6 +4,10 @@
 #include<strings.h>
 #include<ctype.h>
 #include<unistd.h>
+#include<errno.h>
+#include<time.h>
+#include<sys/socket.h>
+#include<sys/time.h>
 #include"internal.h"
 
 #define MAX_HEADER 8192
@@ -14,15 +18,16 @@ static const char *status_text(int status){
 		case 200: return "OK";
 		case 201: return "Created";
 		case 303: return "See Other";
-		case 400: return "Bad cs_request";
+		case 400: return "Bad Request";
 		case 401: return "Unauthorized";
 		case 403: return "Forbidden";
 		case 404: return "Not Found";
 		case 405: return "Method Not Allowed";
+		case 408: return "Request Timeout";
 		case 409: return "Conflict";
 		case 413: return "Payload Too Large";
 		case 429: return "Too Many Requests";
-		case 431: return "cs_request Header Fields Too Large";
+		case 431: return "Request Header Fields Too Large";
 		case 500: return "Internal Server Error";
 		default:  return "Unknown";
 	}
@@ -71,8 +76,35 @@ static const char *find_header(const char *head, const char *name){
 	return NULL;
 }
 
-int http_parse(int client, cs_request *req){
+static double now_seconds(void){
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);   // MONOTONIC : insensible aux changements d'heure
+	return t.tv_sec + t.tv_nsec / 1e9;
+}
+
+#define TIMED_OUT (-2)
+
+// read() qui n'attend pas au-delà de `deadline` : chaque appel n'a droit qu'au temps
+// qui reste. Un client qui envoie un octet toutes les 4 s (« slowloris ») ne peut donc
+// plus garder la connexion ouverte indéfiniment. Renvoie TIMED_OUT si c'est trop tard.
+static ssize_t read_before(int fd, char *buf, size_t size, double deadline){
+	double left = deadline - now_seconds();
+	if (left <= 0){return TIMED_OUT;}
+
+	struct timeval tv;
+	tv.tv_sec = (time_t)left;
+	tv.tv_usec = (suseconds_t)((left - (double)tv.tv_sec) * 1e6);
+	if (tv.tv_sec == 0 && tv.tv_usec == 0){tv.tv_usec = 1;}   // 0 voudrait dire « sans limite »
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+	ssize_t n = read(fd, buf, size);
+	if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){return TIMED_OUT;}
+	return n;
+}
+
+int http_parse(int client, cs_request *req, int timeout){
 	memset(req, 0, sizeof(*req));
+	double deadline = now_seconds() + timeout;
 
 	// 1. lire jusqu'à la ligne vide "\r\n\r\n" qui termine les en-têtes
 	//    (les données arrivent par morceaux : un seul read() ne suffit pas toujours)
@@ -81,7 +113,10 @@ int http_parse(int client, cs_request *req){
 	char *end = NULL;
 	while (end == NULL){
 		if (used == sizeof(head) - 1){return 431;}
-		ssize_t n = read(client, head + used, sizeof(head) - 1 - used);
+		ssize_t n = read_before(client, head + used, sizeof(head) - 1 - used, deadline);
+		if (n == TIMED_OUT){
+			return used == 0 ? -1 : 408;   // rien reçu : on ferme simplement
+		}
 		if (n<=0){
 			return used == 0 ? -1 : 400;
 		}
@@ -136,7 +171,10 @@ int http_parse(int client, cs_request *req){
 	memcpy(req->body, head + head_len, got);
 
 	while (got < (size_t)length){
-		ssize_t n = read(client, req->body + got, length - got);
+		ssize_t n = read_before(client, req->body + got, length - got, deadline);
+		if (n == TIMED_OUT){
+			return 408;
+		}
 		if (n<=0){
 			return 400;
 		}

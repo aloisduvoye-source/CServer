@@ -320,6 +320,9 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 | `port` | `8080` | port d'écoute |
 | `routes` | aucune | table terminée par `CS_END` |
 | `not_found` | page minimale | handler de la page 404 |
+| `max_connections` | `64` | connexions traitées en même temps ; au-delà, les suivantes attendent une place |
+| `read_timeout` | `10` | secondes pour recevoir **toute** la requête, et pour chaque écriture vers le client |
+| `request_timeout` | `30` | secondes au total, handler compris ; au-delà, le processus est arrêté |
 | `static_dir` | `"www"` | fichiers publics |
 | `templates_dir` | `"templates"` | modèles HTML |
 | `db_path` | `"data/site.db"` | base SQLite (si le site en a une) |
@@ -376,7 +379,7 @@ Le framework a ses propres tests ([`tests/test.sh`](tests/test.sh), et [`tests/m
 ## Limites connues
 
 - **Pas de HTTPS** : à placer derrière un proxy (Caddy, nginx) pour une mise en ligne, et le cookie n'a pas l'option `Secure`.
-- **Un processus par requête** (`fork`), sans limite de nombre : simple et robuste, mais pas fait pour des milliers de visiteurs simultanés.
+- **Un processus par requête** (`fork`) : simple et robuste (un plantage ne touche qu'une requête), mais pas fait pour des milliers de visiteurs simultanés. Leur nombre est plafonné par `max_connections`, et chaque requête est bornée dans le temps (`read_timeout`, `request_timeout`) : un client qui envoie sa requête goutte à goutte, ou un handler qui ne finit pas, ne bloquent pas le serveur.
 - **Pas de jeton CSRF** : `SameSite=Lax` protège les navigateurs récents.
 - **SQLite uniquement**, une base par site.
 - **HTTP/1.0** : une requête par connexion.

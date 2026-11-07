@@ -2,6 +2,7 @@
 // Il utilise les valeurs par défaut (www/, templates/, layout.html du framework).
 #include<stdio.h>
 #include<string.h>
+#include<unistd.h>
 #include"cserver.h"
 
 extern const cs_migration site_migrations[];
@@ -24,6 +25,12 @@ static void params(cs_ctx *c){
 	cs_param(c, "b", b, sizeof(b));
 	snprintf(out, sizeof(out), "a=%s b=%s id=%ld", a, b, cs_param_id(c, "a"));
 	send_text(c, out);
+}
+
+// GET /lent : ne répondrait qu'au bout de 10 s ; request_timeout l'arrête avant
+static void slow(cs_ctx *c){
+	sleep(10);
+	send_text(c, "fini");
 }
 
 // des handlers mal écrits : le framework doit rattraper
@@ -176,6 +183,7 @@ static const cs_route routes[] = {
 	CS_POST("/echo",       echo),
 	CS_GET ("/p/:a/x/:b",  params),
 	CS_GET ("/oublie",     forgets),
+	CS_GET ("/lent",       slow),
 	CS_GET ("/deux",       twice),
 	CS_GET ("/vars",       vars),
 	CS_GET ("/casse",      broken),
@@ -210,6 +218,11 @@ int main(void){
 		.login_window   = 600,
 		.login_path     = "/connexion",
 		.signup_path    = "/inscription",
+
+		// des limites courtes, pour que les tests aillent vite
+		.max_connections = 4,
+		.read_timeout    = 2,
+		.request_timeout = 3,
 	};
 	return cs_run(&app);
 }

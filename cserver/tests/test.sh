@@ -166,6 +166,44 @@ check_absent   "X-Injecte"   /entete -D -
 grep -q "cs_header : en-tête refusé" "$DBDIR/server.log" && pass "injection d'en-tête refusée" || fail "injection d'en-tête acceptée"
 check_contains "hash ok" "/hash?p=secret"
 
+# --------------------------------------------------------------- limites et délais
+# (le site de test : read_timeout = 2 s, request_timeout = 3 s, max_connections = 4)
+
+# code et durée d'une requête : "200 0.012"
+timed() { curl -s -o /dev/null -w '%{http_code} %{time_total}' "$@"; }
+between() { awk -v t="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(t >= a && t <= b) }'; }
+
+# un corps envoyé goutte à goutte (20 octets/s pour 200 octets : 10 s) : chaque read()
+# reçoit quelque chose, mais la requête entière doit arriver en 2 s -> 408
+head -c 200 /dev/zero | tr '\0' a > "$TMP"
+set -- $(timed --limit-rate 20 --data-binary @"$TMP" "$BASE/echo")
+[ "$1" = "408" ] && between "$2" 1.5 4 && pass "envoi goutte à goutte coupé : $1 en $2 s" || fail "envoi goutte à goutte : $1 en $2 s (attendu 408 vers 2 s)"
+
+# un handler trop long : arrêté au bout de request_timeout, le reste continue
+set -- $(timed "$BASE/lent")
+[ "$1" = "000" ] && between "$2" 2.5 5 && pass "handler trop long arrêté en $2 s" || fail "handler trop long : $1 en $2 s (attendu coupé vers 3 s)"
+grep -q "requête trop longue" "$DBDIR/server.log" && pass "arrêt signalé dans le terminal" || fail "arrêt non signalé"
+check 200 GET /hello.txt
+
+# 4 connexions occupées : la 5e attend qu'une place se libère (vers 3 s), sans être refusée
+pids=""
+for i in 1 2 3 4; do
+	curl -s -o /dev/null "$BASE/lent" &
+	pids="$pids $!"
+done
+sleep 0.5
+set -- $(timed "$BASE/hello.txt")
+[ "$1" = "200" ] && between "$2" 2 5 && pass "5e connexion servie après une attente de $2 s" || fail "5e connexion : $1 en $2 s (attendu 200 après ~2,5 s)"
+wait $pids
+grep -q "limite de 4 connexions atteinte" "$DBDIR/server.log" && pass "limite signalée dans le terminal" || fail "limite non signalée"
+set -- $(timed "$BASE/hello.txt")
+[ "$1" = "200" ] && between "$2" 0 1 && pass "ensuite, plus d'attente ($2 s)" || fail "après : $1 en $2 s"
+
+# les enfants terminés sont bien récupérés : aucun zombie
+sleep 0.5
+z=$(ps -o stat= --ppid $PID | grep -c '^Z')
+[ "$z" -eq 0 ] && pass "aucun processus zombie" || fail "$z processus zombie(s)"
+
 # --------------------------------------------------------------- redémarrage
 restart_server "$DBDIR/server2.log"
 n=$(grep -c "^migration appliquée" "$DBDIR/server2.log")

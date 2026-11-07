@@ -1,27 +1,50 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<errno.h>
 #include<unistd.h>
 #include<signal.h>
 #include<sys/socket.h>
 #include<sys/time.h>
+#include<sys/wait.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
 #include"internal.h"
 
 cs_app cs_config;
 
+/* ---------------------------------------------------------------- dans l'enfant */
+
+// la requête a dépassé request_timeout : le noyau envoie SIGALRM, on s'arrête.
+// Dans un gestionnaire de signal, seules quelques fonctions sont permises :
+// write() et _exit() en font partie, printf() non.
+static void on_request_timeout(int sig){
+	(void)sig;
+	static const char msg[] = "requête trop longue (request_timeout) : processus arrêté\n";
+	ssize_t ignored = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+	(void)ignored;
+	_exit(1);
+}
+
 static void handle_client(int client, const char *ip){
 
-	// si le client n'envoie rien pendant 5 s, read() renvoie -1
-	struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
-	setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	// une échéance pour toute la requête, handler compris : même une boucle infinie
+	// ou une requête SQL qui ne finit pas s'arrêtent. Avec fork(), il suffit d'un
+	// appel : seul ce processus est concerné.
+	signal(SIGALRM, on_request_timeout);
+	alarm(cs_config.request_timeout);
+
+	// un client qui ne lit pas ce qu'on lui envoie : write() abandonne au bout de
+	// read_timeout secondes sans pouvoir avancer
+	struct timeval tv = { .tv_sec = cs_config.read_timeout, .tv_usec = 0 };
+	setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
 	cs_ctx c;
 	memset(&c, 0, sizeof(c));
 	c.client = client;
 
-	int r = http_parse(client, &c.req);
+	// toute la requête (en-têtes et corps) doit arriver en read_timeout secondes
+	int r = http_parse(client, &c.req, cs_config.read_timeout);
 	if (r == 0){
 		snprintf(c.req.ip, sizeof(c.req.ip), "%s", ip);
 		printf("[pid %d] %s %s %s%s%s (%zu octets)\n", getpid(), c.req.ip, c.req.method, c.req.path,
@@ -56,6 +79,14 @@ static int load_config(const cs_app *app){
 	if (cs_config.login_window == 0)   {cs_config.login_window = 15 * 60;}
 	if (cs_config.login_path == NULL)  {cs_config.login_path = "/login";}
 	if (cs_config.signup_path == NULL) {cs_config.signup_path = "/signup";}
+	if (cs_config.max_connections == 0){cs_config.max_connections = 64;}
+	if (cs_config.read_timeout == 0)   {cs_config.read_timeout = 10;}
+	if (cs_config.request_timeout == 0){cs_config.request_timeout = 30;}
+
+	if (cs_config.max_connections < 1 || cs_config.read_timeout < 1 || cs_config.request_timeout < 1){
+		fprintf(stderr, "max_connections, read_timeout et request_timeout doivent être positifs\n");
+		return -1;
+	}
 
 	// un nom doit tenir dans cs_user.name
 	int name_room = (int)sizeof(((cs_user *)0)->name) - 1;
@@ -107,6 +138,23 @@ static int load_config(const cs_app *app){
 	return 0;
 }
 
+/* ---------------------------------------------------------------- dans le parent */
+
+// nombre d'enfants en vie ; modifié par le gestionnaire de SIGCHLD, d'où volatile
+// sig_atomic_t (un type que le signal ne peut pas couper en pleine écriture)
+static volatile sig_atomic_t children = 0;
+
+// un enfant s'est terminé : on le récupère (sinon il resterait « zombie ») et on
+// libère sa place. Plusieurs fins peuvent n'avoir donné qu'un seul signal : on boucle.
+static void on_child_exit(int sig){
+	(void)sig;
+	int saved = errno;   // waitpid peut modifier errno, que le code interrompu utilisait peut-être
+	while (waitpid(-1, NULL, WNOHANG) > 0){
+		children--;
+	}
+	errno = saved;
+}
+
 int cs_run(const cs_app *app){
 	// redirigé vers un fichier ou un pipe, stdout ne s'écrit que par gros blocs :
 	// les logs arriveraient en retard, dans le désordre, ou seraient perdus si le
@@ -138,7 +186,9 @@ int cs_run(const cs_app *app){
 		return 1;
 	}
 
-	if (listen(server,10) < 0){
+	// la file d'attente du noyau : les connexions qui arrivent pendant que toutes les
+	// places sont prises y attendent (au-delà, elles sont refusées)
+	if (listen(server, SOMAXCONN) < 0){
 		perror("listen");
 		return 1;
 	}
@@ -147,17 +197,46 @@ int cs_run(const cs_app *app){
 		return 1;
 	}
 
-	signal(SIGCHLD, SIG_IGN);
+	// SA_RESTART : un accept() interrompu par SIGCHLD reprend tout seul
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = on_child_exit;
+	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGCHLD, &sa, NULL);
 
-	printf("%s : listening on %d\n", cs_config.name, cs_config.port);
+	// SIGCHLD est bloqué pendant qu'on lit ou modifie `children` (sinon un enfant qui
+	// se termine au même moment fausserait le compte), et débloqué pendant accept()
+	sigset_t sigchld, normal;
+	sigemptyset(&sigchld);
+	sigaddset(&sigchld, SIGCHLD);
+	sigprocmask(SIG_BLOCK, &sigchld, &normal);
 
+	printf("%s : listening on %d (au plus %d connexions à la fois)\n",
+		cs_config.name, cs_config.port, cs_config.max_connections);
+
+	int was_full = 0;
 	while (1) {
+		// toutes les places sont prises : on attend qu'un enfant se termine.
+		// sigsuspend débloque SIGCHLD et attend, d'un seul coup : impossible de rater
+		// le signal entre la vérification et l'attente
+		if (children >= cs_config.max_connections && !was_full){
+			printf("limite de %d connexions atteinte : les suivantes attendent\n", cs_config.max_connections);
+			was_full = 1;
+		}
+		while (children >= cs_config.max_connections){
+			sigsuspend(&normal);
+		}
+		was_full = 0;
+
 		// accept() remplit `peer` avec l'adresse du client
+		sigprocmask(SIG_SETMASK, &normal, NULL);
 		struct sockaddr_in peer;
 		socklen_t peer_len = sizeof(peer);
 		int client = accept(server, (struct sockaddr *)&peer, &peer_len);
+		sigprocmask(SIG_BLOCK, &sigchld, NULL);
 		if (client<0){
-			perror("accept");
+			if (errno != EINTR){perror("accept");}
 			continue;
 		}
 
@@ -173,12 +252,16 @@ int cs_run(const cs_app *app){
 		}
 
 		if (pid == 0){
+			// l'enfant n'a pas d'enfants : il reprend le comportement normal des signaux
+			signal(SIGCHLD, SIG_DFL);
+			sigprocmask(SIG_SETMASK, &normal, NULL);
 			close(server);
 			handle_client(client, ip);
 			close(client);
 			exit(0);
 		}
 
+		children++;
 		close(client);
 	}
 
