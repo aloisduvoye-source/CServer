@@ -16,7 +16,7 @@ LIB_HDR = $(wildcard cserver/include/*.h cserver/src/*.h)
 #   make SITE=todo run
 SITE   ?= guestbook
 SITES   = $(notdir $(wildcard examples/*))
-APP     = examples/$(SITE)
+APP    ?= examples/$(SITE)
 APP_SRC = $(wildcard $(APP)/*.c)
 APP_SQL = $(sort $(wildcard $(APP)/migrations/*.sql))
 APP_HDR = $(wildcard $(APP)/*.h)
@@ -69,13 +69,19 @@ test: $(APP)/server
 all:
 	@for s in $(SITES); do $(MAKE) -s SITE=$$s || exit 1; done
 
+# les tests du framework, sur son site de test (cserver/tests/site/)
+test-cserver:
+	cserver/tests/test.sh
+
 test-all:
+	@echo "== cserver"; cserver/tests/test.sh || exit 1
 	@for s in $(SITES); do echo "== $$s"; $(MAKE) -s SITE=$$s test || exit 1; done
 
 clean:
 	rm -rf cserver/build $(LIB) $(SITES:%=examples/%/server) $(SITES:%=examples/%/build)
+	rm -rf cserver/tests/site/server cserver/tests/site/build
 
 # si une commande échoue, on ne garde pas un fichier généré à moitié
 .DELETE_ON_ERROR:
 
-.PHONY: run test all test-all clean
+.PHONY: run test all test-cserver test-all clean

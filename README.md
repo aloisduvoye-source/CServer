@@ -16,7 +16,7 @@ make SITE=todo run      # la liste de tâches
 
 Puis ouvrir http://localhost:8080.
 
-Tests : `make test-all` (sur d'autres ports, en parallèle du serveur de dev)
+Tests : `make test-all` (le framework, puis chaque site ; sur d'autres ports que le serveur de dev)
 
 ## Plan
 
@@ -42,4 +42,4 @@ Objectif : réutiliser `cserver/` pour d'autres sites, sans y toucher.
 - [x] Contexte `cs_ctx` passé aux handlers
 - [x] Migrations par nom
 - [x] Modèles HTML
-- [ ] Un deuxième site d'exemple
+- [x] Un deuxième site d'exemple

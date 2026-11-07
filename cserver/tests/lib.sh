@@ -9,10 +9,12 @@
 # Le port peut être changé : PORT=9000 ./test.sh
 
 # compile le site du dossier courant et lance un serveur de test
-cs_start() {
+cs_start() { # cs_start <port> [chemin de la racine du dépôt, par défaut ../..]
 	PORT=${PORT:-$1}
 	BASE="localhost:$PORT"
-	make -s -C ../.. SITE="$(basename "$PWD")" || exit 1
+	ROOT=${2:-../..}
+	APP=${PWD#"$(cd "$ROOT" && pwd)"/}     # le dossier du site, vu depuis la racine
+	make -s -C "$ROOT" APP="$APP" || exit 1
 
 	DBDIR=$(mktemp -d)
 	TMP=$(mktemp)

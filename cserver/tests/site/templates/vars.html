@@ -1,0 +1,13 @@
+{{! ce commentaire ne doit pas apparaître }}
+<p id="echappe">{{texte}}</p>
+<p id="brut">{{{html}}}</p>
+<p id="html">{{html}}</p>
+<p id="nombre">{{nombre}}</p>
+<p id="absente">[{{absente}}]</p>
+<p id="sections">[{{#plein}}plein{{/plein}}][{{#vide}}NON{{/vide}}][{{^vide}}vide{{/vide}}][{{^plein}}NON{{/plein}}]</p>
+<p id="site">{{ site_name }}</p>
+<p id="user">[{{user}}]</p>
+    {{#plein}}
+<p id="ligne-seule">les lignes des balises ont disparu</p>
+    {{/plein}}
+<p id="fin">fin</p>
