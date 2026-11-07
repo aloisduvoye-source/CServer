@@ -159,6 +159,20 @@ void send_error(int client, int status){
 	send_response(client, status, "text/html", body, len);
 }
 
+// `location` doit venir de NOTRE code : un "\r\n" venu d'un utilisateur
+// permettrait d'injecter de faux en-têtes dans la réponse
+void send_redirect(int client, const char *location){
+	char header[512];
+	int n = snprintf(header, sizeof(header),
+		"HTTP/1.0 303 See Other\r\n"
+		"Location: %s\r\n"
+		"Content-Length: 0\r\n"
+		"\r\n",
+		location
+	);
+	write_all(client, header, n);
+}
+
 void send_404(int client){
 	const char *body = "<h1>404 dumbass</h1>\n";
 	send_response(client, 404, "text/html", body, strlen(body));

@@ -39,6 +39,12 @@ int db_init(void){
 		"CREATE TABLE IF NOT EXISTS counters ("
 		"  name  TEXT PRIMARY KEY,"
 		"  value INTEGER NOT NULL"
+		");"
+		"CREATE TABLE IF NOT EXISTS messages ("
+		"  id         INTEGER PRIMARY KEY,"
+		"  name       TEXT NOT NULL,"
+		"  message    TEXT NOT NULL,"
+		"  created_at TEXT NOT NULL DEFAULT (datetime('now'))"   // en UTC
 		");";
 
 	char *err = NULL;
@@ -81,4 +87,56 @@ long db_counter_incr(sqlite3 *db, const char *name){
 
 	sqlite3_finalize(stmt);
 	return value;
+}
+
+int db_message_add(sqlite3 *db, const char *name, const char *message){
+	const char *sql = "INSERT INTO messages (name, message) VALUES (?, ?);";
+
+	sqlite3_stmt *stmt;
+	if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK){
+		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, message, -1, SQLITE_STATIC);
+
+	int rc = sqlite3_step(stmt);
+	if (rc != SQLITE_DONE){
+		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+	}
+
+	sqlite3_finalize(stmt);
+	return rc == SQLITE_DONE ? 0 : -1;
+}
+
+int db_messages_each(sqlite3 *db, int limit, MessageFn fn, void *ctx){
+	const char *sql =
+		"SELECT name, message, strftime('%Y-%m-%d %H:%M', created_at, 'localtime') "
+		"FROM messages ORDER BY id DESC LIMIT ?;";
+
+	sqlite3_stmt *stmt;
+	if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK){
+		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	sqlite3_bind_int(stmt, 1, limit);
+
+	int count = 0;
+	int rc;
+	while ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
+		fn(ctx,
+			(const char *)sqlite3_column_text(stmt, 0),
+			(const char *)sqlite3_column_text(stmt, 1),
+			(const char *)sqlite3_column_text(stmt, 2));
+		count++;
+	}
+	if (rc != SQLITE_DONE){
+		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
+		count = -1;
+	}
+
+	sqlite3_finalize(stmt);
+	return count;
 }

@@ -5,6 +5,7 @@
 #include"static.h"
 #include"util.h"
 #include"db.h"
+#include"guestbook.h"
 
 typedef void (*Handler)(int client, Request *req);
 
@@ -86,6 +87,8 @@ static Route routes[] = {
 	{ "GET",  "/api/bonjour", api_bonjour },
 	{ "POST", "/api/bonjour", api_bonjour },
 	{ "GET",  "/bonjour",     page_bonjour },
+	{ "GET",  "/guestbook",   guestbook_list },
+	{ "POST", "/guestbook",   guestbook_post },
 };
 
 void route(int client, Request *req){

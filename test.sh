@@ -40,6 +40,15 @@ check_contains() { # check_contains <texte attendu> <chemin>
 	fi
 }
 
+check_absent() { # check_absent <texte interdit> <chemin>
+	if curl -s --path-as-is "localhost:8080$2" | grep -qF -- "$1"; then
+		echo "ECHEC  GET $2 contient $1"
+		FAIL=1
+	else
+		echo "ok     GET $2 ne contient pas $1"
+	fi
+}
+
 check_post() { # check_post <corps attendu> <chemin> <données>
 	got=$(curl -s --data-binary "$3" "localhost:8080$2")
 	if [ "$got" = "$1" ]; then
@@ -112,5 +121,35 @@ for i in $(seq 20); do
 done
 wait $pids
 check_body "22" /api/visites
+
+# livre d'or
+check_contains "No messages yet" /guestbook
+check 303 POST /guestbook --data-binary "name=Jean&message=premier+message"
+check 303 POST /guestbook --data-binary "name=Zo%C3%A9&message=ligne+1%0D%0Aligne+2"
+check_contains "<strong>Jean</strong>" /guestbook
+check_contains "premier message"       /guestbook
+check_contains "<strong>Zoé</strong>"  /guestbook
+check_absent   "No messages yet"       /guestbook
+
+# livre d'or : XSS
+check 303 POST /guestbook --data-binary "name=%3Cscript%3Ealert(1)%3C%2Fscript%3E&message=hack"
+check_contains "&lt;script&gt;alert(1)&lt;/script&gt;" /guestbook
+check_absent   "<script>"                              /guestbook
+
+# livre d'or : le plus récent en premier
+first=$(curl -s localhost:8080/guestbook | grep -o 'premier message\|hack' | head -1)
+if [ "$first" = "hack" ]; then
+	echo "ok     GET /guestbook : le plus récent en premier"
+else
+	echo "ECHEC  GET /guestbook : ordre ($first en premier)"
+	FAIL=1
+fi
+
+# livre d'or : formulaires refusés
+LONG=$(head -c 201 /dev/zero | tr '\0' a)
+check 400 POST /guestbook --data-binary "name=Jean&message="
+check 400 POST /guestbook --data-binary "name=+++&message=salut"
+check 400 POST /guestbook --data-binary "message=salut"
+check 400 POST /guestbook --data-binary "name=$LONG&message=salut"
 
 exit $FAIL
