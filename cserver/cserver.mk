@@ -10,6 +10,7 @@
 #     SITE_DIR   dossier du site                        défaut : .
 #     CS_BUILD   où compiler la bibliothèque            défaut : $(SITE_DIR)/build/cserver
 #     CFLAGS     options de compilation                 défaut : -Wall -Wextra -g
+#     CS_HINT    message si le dossier n'a encore aucun fichier .c
 
 # le dossier de cserver : celui de ce fichier, où qu'il soit dans le projet
 CSERVER_DIR := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -40,8 +41,15 @@ SITE_SQL  = $(sort $(wildcard $(CS_P)migrations/*.sql))
 SITE_GEN  = $(CS_P)build/migrations.c
 SITE_BIN  = $(CS_P)server
 
+# pas encore de fichier .c : un message clair plutôt qu'une erreur de compilation
+CS_HINT ?= ajouter un main.c
+ifeq ($(strip $(SITE_SRC)),)
+$(SITE_BIN):
+	@echo "aucun fichier .c dans « $(SITE_DIR) » : $(CS_HINT)"; exit 1
+else
 $(SITE_BIN): $(SITE_SRC) $(SITE_HDR) $(SITE_GEN) $(CS_LIB)
 	$(CC) $(CS_FLAGS) $(SITE_SRC) $(SITE_GEN) $(CS_LIB) -o $@ $(LDLIBS)
+endif
 
 # intégrés au binaire : chaque fichier devient une chaîne C (embed.sh)
 #  - les migrations (.sql), du site et du framework

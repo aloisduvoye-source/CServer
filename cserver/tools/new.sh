@@ -3,11 +3,12 @@
 #
 #   cserver/tools/new.sh <dossier>
 #
-# - Si ce cserver/ se trouve déjà dans <dossier> (un sous-module git, par exemple),
-#   le projet l'utilise sur place.
+# - Si ce cserver/ se trouve déjà dans <dossier> (le dépôt cloné, un sous-module
+#   git...), le projet l'utilise sur place.
 # - Sinon, le dossier cserver/ est copié dans le projet.
 #
-# Le dossier doit être vide ou ne pas exister : rien n'est jamais écrasé.
+# Rien n'est jamais écrasé : si un fichier du projet (main.c, templates/...) existe
+# déjà, rien n'est créé ; Makefile, README.md et .gitignore déjà présents sont gardés.
 
 set -e
 
@@ -21,22 +22,36 @@ mkdir -p "$1"
 PROJECT=$(cd "$1" && pwd -P)
 NAME=$(basename "$PROJECT")
 
-# dossier vide, à part un éventuel .git ou le sous-module qui contient ce cserver
-for f in "$PROJECT"/* "$PROJECT"/.[!.]*; do
-	[ -e "$f" ] || continue
-	case "$CSERVER/" in "$f"/*) continue ;; esac   # f contient ce cserver
-	case "$(basename "$f")" in .git|.gitmodules) continue ;; esac
-	echo "$PROJECT n'est pas vide : rien n'a été créé (cserver/tools/new.sh n'écrase jamais rien)" >&2
-	exit 1
-done
-
 # le framework : sur place s'il est dans le projet, sinon copié dans cserver/
 case "$CSERVER/" in
-	"$PROJECT"/*)
-		CS_REL=${CSERVER#"$PROJECT"/}
+	"$PROJECT"/*) CS_REL=${CSERVER#"$PROJECT"/}; COPY=0 ;;
+	*)            CS_REL=cserver;               COPY=1 ;;
+esac
+
+# les fichiers du projet : s'il y en a déjà un, on ne touche à rien
+FILES="main.c test.sh templates/layout.html templates/index.html templates/hello.html www/style.css migrations/001_init.sql"
+[ $COPY -eq 1 ] && FILES="$FILES cserver"
+for f in $FILES; do
+	if [ -e "$PROJECT/$f" ]; then
+		echo "$PROJECT/$f existe déjà : rien n'a été créé (new.sh n'écrase jamais rien)" >&2
+		exit 1
+	fi
+done
+
+# écrit l'entrée standard dans $1, seulement si le fichier n'existe pas encore
+create_if_absent() {
+	if [ -e "$PROJECT/$1" ]; then
+		echo "gardé : $1 (déjà présent)"
+		cat > /dev/null
+	else
+		cat > "$PROJECT/$1"
+	fi
+}
+
+case $COPY in
+	0)
 		echo "cserver utilisé sur place : $CS_REL/" ;;
 	*)
-		CS_REL=cserver
 		mkdir -p "$PROJECT/cserver/tests"
 		cp -R "$CSERVER/include" "$CSERVER/src" "$CSERVER/migrations" "$CSERVER/templates" \
 		      "$CSERVER/tools" "$CSERVER/cserver.mk" "$CSERVER/README.md" "$PROJECT/cserver/"
@@ -49,7 +64,7 @@ COOKIE=$(printf '%s' "$NAME" | tr -c 'A-Za-z0-9_' '_')_session
 
 mkdir -p "$PROJECT/templates" "$PROJECT/www" "$PROJECT/migrations"
 
-cat > "$PROJECT/Makefile" <<EOF
+create_if_absent Makefile <<EOF
 include $CS_REL/cserver.mk
 EOF
 
@@ -162,13 +177,13 @@ cs_finish
 EOF
 chmod +x "$PROJECT/test.sh"
 
-cat > "$PROJECT/.gitignore" <<'EOF'
+create_if_absent .gitignore <<'EOF'
 server
 build/
 data/
 EOF
 
-cat > "$PROJECT/README.md" <<EOF
+create_if_absent README.md <<EOF
 # $NAME
 
 Site écrit avec [cserver]($CS_REL/README.md).
@@ -178,4 +193,8 @@ Site écrit avec [cserver]($CS_REL/README.md).
 EOF
 
 echo "projet créé : $PROJECT"
-echo "  cd $1 && make run      # puis ouvrir http://localhost:8080"
+if [ "$PROJECT" = "$(pwd -P)" ]; then
+	echo "  make run      # puis ouvrir http://localhost:8080"
+else
+	echo "  cd $1 && make run      # puis ouvrir http://localhost:8080"
+fi
