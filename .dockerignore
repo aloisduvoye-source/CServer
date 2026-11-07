@@ -1,0 +1,7 @@
+.git
+**/build
+**/server
+**/data
+**/*.db
+**/*.swp
+plan.md

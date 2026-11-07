@@ -320,6 +320,7 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 |---|---|---|
 | `name` | `"cserver"` | nom du site (titre des pages, `site_name`) |
 | `port` | `8080` | port d'écoute |
+| `user` | aucun | lancé en root (pour le port 80...) : l'utilisateur sans droits à prendre une fois le port ouvert |
 | `routes` | aucune | table terminée par `CS_END` |
 | `not_found` | page minimale | handler de la page 404 |
 | `max_connections` | `64` | connexions traitées en même temps ; au-delà, les suivantes attendent une place |
@@ -339,7 +340,7 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 | `signup_limit`, `signup_window` | `5`, `3600` | inscriptions par IP, sur cette durée (secondes) |
 | `login_path`, `signup_path` | `"/login"`, `"/signup"` | si on les change, déclarer les routes de comptes à la main |
 
-Deux variables d'environnement l'emportent sur la configuration : `CSERVER_PORT` et `CSERVER_DB`. Les tests s'en servent pour tourner sur un autre port, avec une base jetable.
+Trois variables d'environnement l'emportent sur la configuration : `CSERVER_PORT`, `CSERVER_DB` et `CSERVER_USER`. Les tests s'en servent pour tourner sur un autre port, avec une base jetable.
 
 Une configuration incohérente est refusée au démarrage, avec un message : `CS_AUTH_ROUTES` sans `.accounts = 1`, des routes de comptes qui ne correspondent pas à `login_path`, des longueurs impossibles.
 
@@ -389,6 +390,24 @@ Le framework a ses propres tests ([`tests/test.sh`](tests/test.sh), et [`tests/m
 | `fuzz_template` | le moteur de modèles, avec des modèles mal formés |
 
 Chaque cible tourne `FUZZ_TIME` secondes (60 par défaut : `make fuzz FUZZ_TIME=600` pour une longue session). Un plantage arrête tout et laisse l'entrée qui le provoque dans `tests/fuzz/build/crash-*` ; une fois corrigé, on la copie dans [`tests/fuzz/seeds/`](tests/fuzz/seeds/), où elle sera rejouée à chaque session.
+
+## Mise en ligne
+
+**Jamais en root.** Une faille dans le serveur donnerait alors tous les droits sur la machine. Deux façons de l'éviter :
+
+- **Docker** (le plus simple) : le [`Dockerfile`](../Dockerfile) du dépôt compile un site et le lance avec un utilisateur `cserver` qui ne peut écrire que dans `data/`.
+
+  ```sh
+  docker build -t mon-site .                                    # le projet à la racine
+  docker build -t guestbook --build-arg DIR=examples/guestbook .   # ou un exemple
+  docker run -d -p 8080:8080 -v mon-site-data:/site/data --restart unless-stopped mon-site
+  ```
+
+  La base est dans le volume `mon-site-data` : elle survit à une nouvelle image. `docker stop` arrête le serveur tout de suite.
+
+- **Sans Docker** : lancer `./server` avec un utilisateur créé pour lui (`sudo useradd --system cserver`). S'il faut le lancer en root, par exemple pour ouvrir le port 80, `.user = "cserver"` (ou `CSERVER_USER=cserver`) lui fait prendre cet utilisateur juste après l'ouverture du port, avant d'ouvrir la base. Sans cela, il démarre quand même mais affiche un avertissement.
+
+Pour le HTTPS, placer un proxy devant (Caddy obtient les certificats tout seul) : `mon-site.fr { reverse_proxy localhost:8080 }`.
 
 ## Limites connues
 

@@ -9,6 +9,8 @@
 #include<sys/wait.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
+#include<pwd.h>
+#include<grp.h>
 #include"internal.h"
 
 cs_app cs_config;
@@ -179,6 +181,51 @@ static void on_child_exit(int sig){
 	errno = saved;
 }
 
+// arrêt demandé (docker stop, systemctl stop, Ctrl+C) : on quitte tout de suite.
+// Dans un conteneur, le serveur est le processus n°1 : le noyau ignore pour lui les
+// signaux qu'il ne gère pas lui-même, et docker stop attendrait 10 s avant de le tuer.
+static void on_stop(int sig){
+	(void)sig;
+	_exit(0);
+}
+
+// lancé en root (pour ouvrir le port 80, par exemple) : on passe à un utilisateur sans
+// droits, une fois le port ouvert. Une faille dans le serveur ne donnerait alors que
+// les droits de cet utilisateur, pas ceux de root sur toute la machine.
+static int drop_privileges(void){
+	const char *name = getenv("CSERVER_USER");
+	if (name == NULL){name = cs_config.user;}
+
+	if (geteuid() != 0){
+		if (name != NULL){
+			fprintf(stderr, "user = %s ignoré : le serveur ne tourne pas en root\n", name);
+		}
+		return 0;
+	}
+	if (name == NULL){
+		fprintf(stderr, "attention : le serveur tourne en root ; une faille donnerait tous les droits "
+		                "sur la machine (régler .user, ou CSERVER_USER)\n");
+		return 0;
+	}
+
+	struct passwd *pw = getpwnam(name);
+	if (pw == NULL){
+		fprintf(stderr, "utilisateur %s inconnu\n", name);
+		return -1;
+	}
+	// dans cet ordre : une fois l'utilisateur changé, on n'a plus le droit de changer de groupe
+	if (initgroups(pw->pw_name, pw->pw_gid) < 0 || setgid(pw->pw_gid) < 0 || setuid(pw->pw_uid) < 0){
+		perror("changement d'utilisateur");
+		return -1;
+	}
+	if (setuid(0) == 0){   // vérification : revenir en root doit être impossible
+		fprintf(stderr, "impossible de quitter root\n");
+		return -1;
+	}
+	printf("le serveur tourne maintenant en %s\n", name);
+	return 0;
+}
+
 int cs_run(const cs_app *app){
 	// redirigé vers un fichier ou un pipe, stdout ne s'écrit que par gros blocs :
 	// les logs arriveraient en retard, dans le désordre, ou seraient perdus si le
@@ -217,9 +264,18 @@ int cs_run(const cs_app *app){
 		return 1;
 	}
 
+	// le port est ouvert : plus besoin de root. Avant db_init, pour que la base soit
+	// créée par l'utilisateur qui s'en servira.
+	if (drop_privileges() < 0){
+		return 1;
+	}
+
 	if (cs_config.db_path != NULL && db_init() < 0){
 		return 1;
 	}
+
+	signal(SIGTERM, on_stop);
+	signal(SIGINT, on_stop);
 
 	// SA_RESTART : un accept() interrompu par SIGCHLD reprend tout seul
 	struct sigaction sa;
@@ -278,6 +334,8 @@ int cs_run(const cs_app *app){
 		if (pid == 0){
 			// l'enfant n'a pas d'enfants : il reprend le comportement normal des signaux
 			signal(SIGCHLD, SIG_DFL);
+			signal(SIGTERM, SIG_DFL);
+			signal(SIGINT, SIG_DFL);
 			sigprocmask(SIG_SETMASK, &normal, NULL);
 			close(server);
 			handle_client(client, ip);

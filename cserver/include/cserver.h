@@ -268,6 +268,9 @@ typedef struct {
 typedef struct {
 	const char     *name;          // nom du site, affiché dans le <title>      défaut : "cserver"
 	int             port;          // port d'écoute ; CSERVER_PORT l'emporte    défaut : 8080
+	const char     *user;          // lancé en root (pour le port 80...) : passer à cet
+	                               // utilisateur une fois le port ouvert ;
+	                               // CSERVER_USER l'emporte                    défaut : aucun
 	const char     *static_dir;    // dossier des fichiers statiques            défaut : "www"
 	const char     *templates_dir; // dossier des modèles HTML                  défaut : "templates"
 	const cs_route *routes;        // table terminée par CS_END
