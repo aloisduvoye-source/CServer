@@ -1,0 +1,11 @@
+POST /echo HTTP/1.1
+Host: x
+Transfer-Encoding: chunked
+
+5
+name=
+4;ext=1
+Jean
+0
+X-Fin: 1
+

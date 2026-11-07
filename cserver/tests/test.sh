@@ -166,6 +166,64 @@ check_absent   "X-Injecte"   /entete -D -
 grep -q "cs_header : en-tête refusé" "$DBDIR/server.log" && pass "injection d'en-tête refusée" || fail "injection d'en-tête acceptée"
 check_contains "hash ok" "/hash?p=secret"
 
+# --------------------------------------------------------------- HTTP/1.1
+
+# une requête brute, octet par octet (ce que curl ne sait pas envoyer) ; elle doit
+# finir par fermer la connexion (Connection: close, HTTP/1.0, ou une erreur)
+command -v nc > /dev/null || fail "nc est nécessaire pour les tests HTTP/1.1 bruts"
+raw() { printf "$1" | timeout 5 nc localhost "$PORT"; }
+raw_has() { # raw_has <requête> <texte attendu> <description>
+	if raw "$1" | grep -qF -- "$2"; then pass "$3"; else fail "$3 (attendu : $2)"; fi
+}
+raw_count() { # raw_count <requête> <texte> <nombre attendu> <description>
+	n=$(raw "$1" | grep -cF -- "$2")
+	[ "$n" -eq "$3" ] && pass "$4" || fail "$4 ($n au lieu de $3)"
+}
+
+# connexion réutilisée : curl envoie les deux requêtes sur la même connexion
+n=$(curl -s -o /dev/null -o /dev/null -w '%{num_connects} ' "$BASE/hello.txt" "$BASE/style.css")
+[ "$n" = "1 0 " ] && pass "keep-alive : 2 requêtes, 1 seule connexion" || fail "keep-alive : connexions ouvertes '$n' (attendu '1 0 ')"
+check_contains "Connection: keep-alive" /hello.txt -D -
+
+# deux requêtes envoyées d'un coup : la seconde n'est pas perdue
+raw_count 'GET /hello.txt HTTP/1.1\r\nHost: x\r\n\r\nGET /echo?q=deuxieme HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' \
+	"HTTP/1.1 200" 2 "requêtes enchaînées : 2 réponses"
+raw_has 'GET /hello.txt HTTP/1.1\r\nHost: x\r\n\r\nGET /echo?q=deuxieme HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' \
+	"deuxieme" "requêtes enchaînées : la seconde est bien lue"
+
+# en-têtes et versions
+raw_has 'GET /hello.txt HTTP/1.1\r\n\r\n'              "HTTP/1.1 400"   "HTTP/1.1 sans Host : 400"
+raw_has 'GET /hello.txt HTTP/1.0\r\n\r\n'              "Connection: close" "HTTP/1.0 : connexion fermée après la réponse"
+raw_has 'GET /hello.txt HTTP/2.0\r\nHost: x\r\n\r\n'   "HTTP/1.1 505"   "version inconnue : 505"
+raw_has 'GET /hello.txt\r\n\r\n'                       "HTTP/1.1 400"   "sans version : 400"
+
+# HEAD : les en-têtes de GET, sans le corps
+check_contains "Content-Length: 8" /hello.txt -I
+raw_has    'HEAD /hello.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' "HTTP/1.1 200" "HEAD sur un fichier : 200"
+raw_count  'HEAD /hello.txt HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' "bonjour" 0 "HEAD sur un fichier : pas de corps"
+raw_count  'HEAD /echo?q=xyz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n' "xyz" 0 "HEAD sur une route : pas de corps"
+
+# corps envoyé en morceaux (Transfer-Encoding: chunked)
+check_contains "en morceaux" /echo -H "Transfer-Encoding: chunked" --data-binary "q=en+morceaux"
+raw_has 'POST /echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\nq=\r\n4;ext=1\r\nabcd\r\n0\r\nX-Fin: 1\r\n\r\n' \
+	"abcd" "morceaux avec extension et en-tête final"
+raw_has 'POST /echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n' "HTTP/1.1 400" "taille de morceau invalide : 400"
+raw_has 'POST /echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nFFFFFFFFF\r\n' "HTTP/1.1 413" "morceau énorme : 413"
+
+# Content-Length ET chunked : refusé (request smuggling)
+raw_has 'POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nq=a\r\n0\r\n\r\n' \
+	"HTTP/1.1 400" "Content-Length et chunked ensemble : 400"
+raw_has 'POST /echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\n\r\n' "HTTP/1.1 501" "Transfer-Encoding inconnu : 501"
+
+# Expect: 100-continue : le serveur donne son accord tout de suite (curl attendait 1 s)
+set -- $(curl -s -o /dev/null -w '%{http_code} %{time_total}' -H "Expect: 100-continue" --data-binary "q=attendu" "$BASE/echo")
+[ "$1" = "200" ] && awk -v t="$2" 'BEGIN { exit !(t < 0.8) }' && pass "Expect: 100-continue en $2 s" || fail "Expect: 100-continue : $1 en $2 s"
+check_contains "attendu" /echo -H "Expect: 100-continue" --data-binary "q=attendu"
+
+# 405 : l'en-tête Allow dit quelles méthodes sont acceptées
+check_contains "Allow: GET, HEAD, POST" /echo      -X DELETE -D -
+check_contains "Allow: GET, HEAD"       /hello.txt -X DELETE -D -
+
 # --------------------------------------------------------------- limites et délais
 # (le site de test : read_timeout = 2 s, request_timeout = 3 s, max_connections = 4)
 

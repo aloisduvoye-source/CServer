@@ -153,6 +153,13 @@ static const char *load_template(const char *name){
 	return text;
 }
 
+void template_cache_clear(void){
+	for (int i = 0; i < cache_count; i++){
+		free(cache[i].text);
+	}
+	cache_count = 0;
+}
+
 /* ---------------------------------------------------------------- rendu */
 
 // comme strstr, mais dans [p, end) : le texte d'une section ne finit pas par '\0'

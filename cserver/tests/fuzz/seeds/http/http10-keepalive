@@ -1,0 +1,5 @@
+HEAD /hello.txt HTTP/1.0
+Connection: keep-alive
+
+GET / HTTP/1.0
+

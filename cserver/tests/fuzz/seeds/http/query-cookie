@@ -1,3 +1,4 @@
 GET /p/42/x/z%C3%A9?a=1&b=%20x HTTP/1.1
+Host: x
 Cookie: x=1; cs_session=abc
 

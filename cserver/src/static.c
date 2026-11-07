@@ -46,6 +46,10 @@ int static_serve(cs_ctx *c){
 	}
 
 	http_send_header(c->client, 200, content_type(filename), info.st_size, c->headers);
+	if (c->head){   // HEAD : les en-têtes seulement
+		close(file);
+		return 1;
+	}
 
 	char buffer[4096];
 	ssize_t count;

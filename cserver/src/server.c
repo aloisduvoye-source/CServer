@@ -26,38 +26,57 @@ static void on_request_timeout(int sig){
 	_exit(1);
 }
 
-static void handle_client(int client, const char *ip){
+// une connexion ne sert pas indéfiniment : au-delà, le client en ouvre une autre
+#define MAX_REQUESTS_PER_CONNECTION 100
 
-	// une échéance pour toute la requête, handler compris : même une boucle infinie
-	// ou une requête SQL qui ne finit pas s'arrêtent. Avec fork(), il suffit d'un
-	// appel : seul ce processus est concerné.
+static void handle_client(int client, const char *ip){
 	signal(SIGALRM, on_request_timeout);
-	alarm(cs_config.request_timeout);
 
 	// un client qui ne lit pas ce qu'on lui envoie : write() abandonne au bout de
 	// read_timeout secondes sans pouvoir avancer
 	struct timeval tv = { .tv_sec = cs_config.read_timeout, .tv_usec = 0 };
 	setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-	cs_ctx c;
-	memset(&c, 0, sizeof(c));
-	c.client = client;
+	// HTTP/1.1 : plusieurs requêtes à la suite sur la même connexion (la page, puis
+	// son CSS, son JS...), au lieu d'une connexion (et d'un fork) par fichier
+	static http_conn conn;   // static : 8 Ko qu'il est inutile de mettre sur la pile
+	memset(&conn, 0, sizeof(conn));
+	conn.fd = client;
 
-	// toute la requête (en-têtes et corps) doit arriver en read_timeout secondes
-	int r = http_parse(client, &c.req, cs_config.read_timeout);
-	if (r == 0){
+	for (int served = 0; served < MAX_REQUESTS_PER_CONNECTION; served++){
+		cs_ctx c;
+		memset(&c, 0, sizeof(c));
+		c.client = client;
+
+		// la première requête a read_timeout pour arriver ; les suivantes peuvent se
+		// faire attendre keepalive_timeout, puis ont read_timeout pour arriver en entier
+		int keep_alive;
+		int idle = served == 0 ? cs_config.read_timeout : cs_config.keepalive_timeout;
+		int r = http_parse(&conn, &c.req, idle, cs_config.read_timeout, &keep_alive);
+		if (r != 0){
+			// une requête illisible : on ne sait plus où commence la suivante, on ferme
+			if (r > 0){http_send_error(client, r, "Connection: close\r\n", 1);}
+			http_free(&c.req);
+			return;
+		}
+
+		keep_alive = keep_alive && served + 1 < MAX_REQUESTS_PER_CONNECTION;
 		snprintf(c.req.ip, sizeof(c.req.ip), "%s", ip);
+		c.head = strcmp(c.req.method, "HEAD") == 0;
+		cs_header(&c, keep_alive ? "Connection: keep-alive" : "Connection: close");
 		printf("[pid %d] %s %s %s%s%s (%zu octets)\n", getpid(), c.req.ip, c.req.method, c.req.path,
 			c.req.query[0] ? "?" : "", c.req.query, c.req.body_len);
+
+		// une échéance pour le traitement, handler compris : même une boucle infinie
+		// ou une requête SQL qui ne finit pas s'arrêtent. Avec fork(), il suffit d'un
+		// appel : seul ce processus est concerné.
+		alarm(cs_config.request_timeout);
 		route(&c);
 		ctx_finish(&c);   // 500 si le handler n'a rien envoyé, ferme la base, libère le corps
-		return;
-	}
+		alarm(0);
 
-	if (r > 0){
-		http_send_error(client, r, NULL);
+		if (!keep_alive){return;}
 	}
-	http_free(&c.req);
 }
 
 // copie la configuration du site et complète ce qu'il n'a pas précisé
@@ -82,9 +101,11 @@ static int load_config(const cs_app *app){
 	if (cs_config.max_connections == 0){cs_config.max_connections = 64;}
 	if (cs_config.read_timeout == 0)   {cs_config.read_timeout = 10;}
 	if (cs_config.request_timeout == 0){cs_config.request_timeout = 30;}
+	if (cs_config.keepalive_timeout == 0){cs_config.keepalive_timeout = 5;}
 
-	if (cs_config.max_connections < 1 || cs_config.read_timeout < 1 || cs_config.request_timeout < 1){
-		fprintf(stderr, "max_connections, read_timeout et request_timeout doivent être positifs\n");
+	if (cs_config.max_connections < 1 || cs_config.read_timeout < 1 || cs_config.request_timeout < 1
+	 || cs_config.keepalive_timeout < 1){
+		fprintf(stderr, "max_connections, read_timeout, request_timeout et keepalive_timeout doivent être positifs\n");
 		return -1;
 	}
 

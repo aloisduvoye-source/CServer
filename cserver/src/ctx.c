@@ -56,13 +56,18 @@ static int begin_response(cs_ctx *c){
 
 void cs_send(cs_ctx *c, int status, const char *content_type, const char *body, size_t len){
 	if (begin_response(c)){
-		http_send(c->client, status, content_type, body, len, c->headers);
+		if (c->head){   // HEAD : les mêmes en-têtes que GET, sans le corps
+			http_send_header(c->client, status, content_type, len, c->headers);
+		}
+		else {
+			http_send(c->client, status, content_type, body, len, c->headers);
+		}
 	}
 }
 
 void cs_error(cs_ctx *c, int status){
 	if (begin_response(c)){
-		http_send_error(c->client, status, c->headers);
+		http_send_error(c->client, status, c->headers, !c->head);
 	}
 }
 
@@ -151,11 +156,12 @@ const cs_user *cs_require_user(cs_ctx *c){
 void ctx_finish(cs_ctx *c){
 	if (!c->responded){
 		fprintf(stderr, "%s %s : le handler n'a envoyé aucune réponse\n", c->req.method, c->req.path);
-		http_send_error(c->client, 500, NULL);
+		http_send_error(c->client, 500, "Connection: close\r\n", !c->head);
 	}
 	if (c->db != NULL){
 		sqlite3_close(c->db);
 		c->db = NULL;
 	}
 	http_free(&c->req);
+	template_cache_clear();
 }

@@ -35,6 +35,7 @@ typedef struct {
 	cs_user    user;
 	int        responded;   // une réponse est déjà partie
 	char       headers[1024];  // en-têtes ajoutés par cs_header(), pour la réponse à venir
+	int        head;        // requête HEAD : les réponses n'envoient que leurs en-têtes
 
 	// interne : passer par cs_param() ; segments capturés par une route "/x/:nom"
 	int        params_count;
@@ -263,6 +264,8 @@ typedef struct {
 	                               // et pour chaque écriture vers le client      défaut : 10
 	int             request_timeout; // secondes au total, handler compris :
 	                               // au-delà, le processus est arrêté            défaut : 30
+	int             keepalive_timeout; // HTTP/1.1 : secondes d'attente de la requête
+	                               // suivante sur une connexion gardée ouverte   défaut : 5
 
 	// base de données : seulement si le site en a besoin. Elle existe dès que
 	// db_path, migrations ou accounts est renseigné ; sinon cs_db() renvoie NULL.

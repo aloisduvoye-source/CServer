@@ -40,9 +40,44 @@ static int match(const char *pattern, const char *path, cs_ctx *c){
 	return *p == '\0' && *s == '\0';
 }
 
-void route(cs_ctx *c){
+// ajoute `method` à la liste "GET, HEAD, POST" si elle n'y est pas déjà
+static void allow_add(char *allow, size_t size, const char *method){
+	const char *p = allow;
+	size_t n = strlen(method);
+	while ((p = strstr(p, method)) != NULL){
+		if ((p == allow || p[-1] == ' ') && (p[n] == ',' || p[n] == '\0')){return;}
+		p += n;
+	}
+	size_t used = strlen(allow);
+	snprintf(allow + used, size - used, "%s%s", used > 0 ? ", " : "", method);
+}
+
+// 405 : la méthode n'est pas acceptée ici ; l'en-tête Allow dit lesquelles le sont
+static void method_not_allowed(cs_ctx *c){
+	char allow[128] = "";
 	for (const cs_route *r = cs_config.routes; r->method != NULL; r++){
-		if (strcmp(c->req.method, r->method) != 0 || !match(r->path, c->req.path, c)){
+		if (match(r->path, c->req.path, c)){
+			allow_add(allow, sizeof(allow), r->method);
+			if (strcmp(r->method, "GET") == 0){allow_add(allow, sizeof(allow), "HEAD");}
+		}
+	}
+	c->params_count = 0;
+	if (allow[0] == '\0'){
+		snprintf(allow, sizeof(allow), "GET, HEAD");   // aucune route : un fichier statique
+	}
+
+	char header[160];
+	snprintf(header, sizeof(header), "Allow: %s", allow);
+	cs_header(c, header);
+	cs_error(c, 405);
+}
+
+void route(cs_ctx *c){
+	// HEAD se comporte comme GET : les réponses n'enverront que leurs en-têtes
+	const char *method = c->head ? "GET" : c->req.method;
+
+	for (const cs_route *r = cs_config.routes; r->method != NULL; r++){
+		if (strcmp(method, r->method) != 0 || !match(r->path, c->req.path, c)){
 			continue;
 		}
 
@@ -65,7 +100,7 @@ void route(cs_ctx *c){
 	c->params_count = 0;
 
 	// aucune route : on cherche un fichier statique
-	if (strcmp(c->req.method, "GET") == 0){
+	if (strcmp(method, "GET") == 0){
 		if (static_serve(c)){
 			c->responded = 1;
 			return;
@@ -80,5 +115,5 @@ void route(cs_ctx *c){
 		return;
 	}
 
-	cs_error(c, 405);
+	method_not_allowed(c);
 }

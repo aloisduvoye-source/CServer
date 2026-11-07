@@ -1,0 +1,12 @@
+GET /a HTTP/1.1
+Host: x
+
+GET /b?a=1 HTTP/1.1
+Host: x
+
+POST /c HTTP/1.1
+Host: x
+Content-Length: 6
+Connection: close
+
+name=x

@@ -323,6 +323,7 @@ Tout ce qui est propre à un site est dans `cs_app`. Un champ laissé à 0 ou `N
 | `max_connections` | `64` | connexions traitées en même temps ; au-delà, les suivantes attendent une place |
 | `read_timeout` | `10` | secondes pour recevoir **toute** la requête, et pour chaque écriture vers le client |
 | `request_timeout` | `30` | secondes au total, handler compris ; au-delà, le processus est arrêté |
+| `keepalive_timeout` | `5` | secondes d'attente de la requête suivante sur une connexion gardée ouverte |
 | `static_dir` | `"www"` | fichiers publics |
 | `templates_dir` | `"templates"` | modèles HTML |
 | `db_path` | `"data/site.db"` | base SQLite (si le site en a une) |
@@ -380,7 +381,7 @@ Le framework a ses propres tests ([`tests/test.sh`](tests/test.sh), et [`tests/m
 
 | Cible | Teste |
 |---|---|
-| `fuzz_http` | l'analyse des requêtes, puis la lecture de la query, du formulaire et des cookies |
+| `fuzz_http` | l'analyse des requêtes (plusieurs à la suite, corps en morceaux), puis la lecture de la query, du formulaire et des cookies |
 | `fuzz_text` | `cs_url_decode`, `cs_params_get`, les échappements HTML et JSON, l'UTF-8 |
 | `fuzz_template` | le moteur de modèles, avec des modèles mal formés |
 
@@ -392,4 +393,4 @@ Chaque cible tourne `FUZZ_TIME` secondes (60 par défaut : `make fuzz FUZZ_TIME=
 - **Un processus par requête** (`fork`) : simple et robuste (un plantage ne touche qu'une requête), mais pas fait pour des milliers de visiteurs simultanés. Leur nombre est plafonné par `max_connections`, et chaque requête est bornée dans le temps (`read_timeout`, `request_timeout`) : un client qui envoie sa requête goutte à goutte, ou un handler qui ne finit pas, ne bloquent pas le serveur.
 - **Pas de jeton CSRF** : `SameSite=Lax` protège les navigateurs récents.
 - **SQLite uniquement**, une base par site.
-- **HTTP/1.0** : une requête par connexion.
+- **HTTP/1.1, sans HTTP/2** : une connexion sert plusieurs requêtes à la suite (100 au plus), les requêtes envoyées d'un coup sont toutes lues, les corps en morceaux (`chunked`) sont acceptés, `HEAD` et `Expect: 100-continue` sont gérés. Une connexion gardée ouverte occupe un processus jusqu'à `keepalive_timeout` : c'est ce que plafonne `max_connections`.
