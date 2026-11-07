@@ -3,7 +3,8 @@
 
 #include"http.h"
 
-// sert le fichier www/<path> (ou www/index.html pour "/")
-void static_serve(int client, Request *req);
+// sert le fichier <static_dir>/<path> (ou index.html pour "/")
+// renvoie 1 si le fichier a été envoyé, 0 s'il n'existe pas
+int static_serve(int client, Request *req);
 
 #endif

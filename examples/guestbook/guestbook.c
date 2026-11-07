@@ -1,12 +1,8 @@
 #include<stdio.h>
 #include<string.h>
 #include<ctype.h>
+#include"cserver.h"
 #include"guestbook.h"
-#include"auth.h"
-#include"buffer.h"
-#include"db.h"
-#include"page.h"
-#include"util.h"
 
 // le formulaire limite en CARACTÈRES (maxlength="1000"),
 // le serveur limite en OCTETS : en UTF-8 un caractère prend jusqu'à 4 octets

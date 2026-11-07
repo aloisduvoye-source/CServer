@@ -1,18 +1,29 @@
 CC     = gcc
-CFLAGS = -Wall -Wextra -g -Icserver/src
+CFLAGS = -Wall -Wextra -g -Icserver/include
 LDLIBS = -lsqlite3 -lcrypt
 
-# le framework
-CSERVER_SRC = $(wildcard cserver/src/*.c)
-CSERVER_HDR = $(wildcard cserver/src/*.h)
+# le framework : une bibliothèque statique qui ne connaît aucun site
+LIB     = cserver/libcserver.a
+LIB_SRC = $(wildcard cserver/src/*.c)
+LIB_OBJ = $(LIB_SRC:cserver/src/%.c=cserver/build/%.o)
+LIB_HDR = $(wildcard cserver/include/*.h cserver/src/*.h)
 
 # le site (un dossier par site dans examples/)
 APP     = examples/guestbook
 APP_SRC = $(wildcard $(APP)/*.c)
 APP_HDR = $(wildcard $(APP)/*.h)
 
-$(APP)/server: $(CSERVER_SRC) $(CSERVER_HDR) $(APP_SRC) $(APP_HDR)
-	$(CC) $(CFLAGS) $(CSERVER_SRC) $(APP_SRC) -o $@ $(LDLIBS)
+$(APP)/server: $(APP_SRC) $(APP_HDR) $(LIB)
+	$(CC) $(CFLAGS) $(APP_SRC) $(LIB) -o $@ $(LDLIBS)
+
+$(LIB): $(LIB_OBJ)
+	ar rcs $@ $^
+
+cserver/build/%.o: cserver/src/%.c $(LIB_HDR) | cserver/build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+cserver/build:
+	mkdir -p $@
 
 # le serveur cherche www/ et data/ dans le dossier courant : on le lance depuis le site
 run: $(APP)/server
@@ -22,6 +33,6 @@ test: $(APP)/server
 	$(APP)/test.sh
 
 clean:
-	rm -f $(APP)/server
+	rm -rf cserver/build $(LIB) $(APP)/server
 
 .PHONY: run test clean

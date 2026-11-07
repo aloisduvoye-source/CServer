@@ -1,18 +1,26 @@
 #include<string.h>
 #include"router.h"
+#include"config.h"
 #include"static.h"
 
 void route(int client, Request *req){
-	for (size_t i = 0; i < routes_count; i++){
-		if (strcmp(req->method, routes[i].method) == 0 && strcmp(req->path, routes[i].path) == 0){
-			routes[i].handler(client, req);
+	for (const cs_route *r = cs_config.routes; r->method != NULL; r++){
+		if (strcmp(req->method, r->method) == 0 && strcmp(req->path, r->path) == 0){
+			r->handler(client, req);
 			return;
 		}
 	}
 
-	// aucune route : on cherche un fichier dans www/
+	// aucune route : on cherche un fichier statique
 	if (strcmp(req->method, "GET") == 0){
-		static_serve(client, req);
+		if (static_serve(client, req)){return;}
+
+		if (cs_config.not_found != NULL){
+			cs_config.not_found(client, req);
+		}
+		else {
+			send_error(client, 404);
+		}
 		return;
 	}
 

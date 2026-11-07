@@ -25,7 +25,6 @@ int  write_all(int fd, const char *buf, size_t len);
 void send_header(int client, int status, const char *content_type, size_t len);
 void send_response(int client, int status, const char *content_type, const char *body, size_t len);
 void send_error(int client, int status);
-void send_404(int client);
 
 // 303 See Other ; extra_headers : lignes d'en-têtes en plus ("Set-Cookie: ...\r\n") ou NULL
 void send_redirect(int client, const char *location, const char *extra_headers);

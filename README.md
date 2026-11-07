@@ -2,7 +2,7 @@
 
 Mini framework web en C, tout à la main (bibliothèques : SQLite, et libcrypt pour les mots de passe).
 
-- `cserver/` : le framework
+- `cserver/` : le framework, compilé en `libcserver.a` (API : `cserver/include/cserver.h`)
 - `examples/guestbook/` : un site qui l'utilise (livre d'or avec comptes)
 
 ## Compiler et lancer
@@ -36,7 +36,7 @@ Objectif : un livre d'or (formulaire + liste des messages).
 Objectif : réutiliser `cserver/` pour d'autres sites, sans y toucher.
 
 - [x] Séparer le framework et le site
-- [ ] Configuration et `cs_run()`
+- [x] Configuration et `cs_run()`
 - [ ] Contexte `cs_ctx` passé aux handlers
 - [ ] Migrations par nom
 - [ ] Modèles HTML

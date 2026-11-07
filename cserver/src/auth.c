@@ -6,11 +6,10 @@
 #include<sys/random.h>
 #include"auth.h"
 #include"buffer.h"
+#include"config.h"
 #include"page.h"
 #include"util.h"
 
-// nom spécifique : sur localhost, un cookie "session" d'un autre projet arriverait ici
-#define COOKIE_NAME     "cserver_session"
 #define SESSION_SECONDS (7 * 24 * 3600)     // 7 jours
 #define TOKEN_BYTES     32                  // 256 bits d'aléatoire
 #define TOKEN_HEX       (TOKEN_BYTES * 2)
@@ -87,12 +86,12 @@ static int new_token(char out[TOKEN_HEX + 1]){
 
 int auth_current_user(sqlite3 *db, const Request *req, User *user){
 	char token[TOKEN_HEX + 1];
-	if (cookie_get(req, COOKIE_NAME, token, sizeof(token)) < 0){return 0;}
+	if (cookie_get(req, cs_config.cookie_name, token, sizeof(token)) < 0){return 0;}
 	if (strlen(token) != TOKEN_HEX){return 0;}
 	return db_session_user(db, token, (long)time(NULL), user) == 1;
 }
 
-// crée la session, pose le cookie et redirige vers le livre d'or
+// crée la session, pose le cookie et redirige vers la page choisie par le site
 static void start_session(int client, sqlite3 *db, long user_id){
 	char token[TOKEN_HEX + 1];
 	long expires = (long)time(NULL) + SESSION_SECONDS;
@@ -106,9 +105,9 @@ static void start_session(int client, sqlite3 *db, long user_id){
 	// pas de Secure : il obligerait le HTTPS, que ce serveur n'a pas
 	char cookie[256];
 	snprintf(cookie, sizeof(cookie),
-		"Set-Cookie: " COOKIE_NAME "=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax\r\n",
-		token, SESSION_SECONDS);
-	send_redirect(client, "/guestbook", cookie);
+		"Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax\r\n",
+		cs_config.cookie_name, token, SESSION_SECONDS);
+	send_redirect(client, cs_config.after_login, cookie);
 }
 
 /* ---------------------------------------------------------------- pages */
@@ -257,7 +256,7 @@ void auth_login(int client, Request *req){
 void auth_logout(int client, Request *req){
 	// la session est supprimée côté serveur : même un cookie copié ne marche plus
 	char token[TOKEN_HEX + 1];
-	if (cookie_get(req, COOKIE_NAME, token, sizeof(token)) == 0){
+	if (cookie_get(req, cs_config.cookie_name, token, sizeof(token)) == 0){
 		sqlite3 *db = db_open();
 		if (db != NULL){
 			db_session_delete(db, token);
@@ -266,6 +265,9 @@ void auth_logout(int client, Request *req){
 	}
 
 	// Max-Age=0 : le navigateur efface le cookie
-	send_redirect(client, "/guestbook",
-		"Set-Cookie: " COOKIE_NAME "=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax\r\n");
+	char cookie[128];
+	snprintf(cookie, sizeof(cookie),
+		"Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax\r\n",
+		cs_config.cookie_name);
+	send_redirect(client, cs_config.after_login, cookie);
 }

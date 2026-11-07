@@ -1,14 +1,20 @@
 #include<stdio.h>
-#include<stdlib.h>
+#include<string.h>
 #include<sys/stat.h>
 #include"db.h"
+#include"config.h"
 
-#define DEFAULT_PATH "data/site.db"
+// crée le dossier qui contient la base ("data/site.db" -> "data"), s'il manque
+static void make_parent_dir(const char *path){
+	const char *slash = strrchr(path, '/');
+	if (slash == NULL || slash == path){return;}
 
-// CSERVER_DB permet aux tests d'utiliser une base jetable
-static const char *db_path(void){
-	const char *p = getenv("CSERVER_DB");
-	return p != NULL ? p : DEFAULT_PATH;
+	char dir[512];
+	size_t n = slash - path;
+	if (n >= sizeof(dir)){return;}
+	memcpy(dir, path, n);
+	dir[n] = '\0';
+	mkdir(dir, 0755);   // sans effet si le dossier existe déjà
 }
 
 // prépare une requête ; affiche l'erreur et renvoie NULL si elle est invalide
@@ -44,7 +50,7 @@ static int exec(sqlite3 *db, const char *sql){
 
 sqlite3 *db_open(void){
 	sqlite3 *db;
-	if (sqlite3_open(db_path(), &db) != SQLITE_OK){
+	if (sqlite3_open(cs_config.db_path, &db) != SQLITE_OK){
 		fprintf(stderr, "sqlite: %s\n", sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return NULL;
@@ -96,9 +102,7 @@ static int user_version(sqlite3 *db){
 }
 
 int db_init(void){
-	if (getenv("CSERVER_DB") == NULL){
-		mkdir("data", 0755);   // sans effet si le dossier existe déjà
-	}
+	make_parent_dir(cs_config.db_path);
 
 	sqlite3 *db = db_open();
 	if (db == NULL){return -1;}

@@ -1,5 +1,6 @@
 #include"page.h"
 #include"http.h"
+#include"config.h"
 
 void page_begin(Buffer *b, const char *title, const User *user, const char *script){
 	buf_append(b,
@@ -10,8 +11,10 @@ void page_begin(Buffer *b, const char *title, const User *user, const char *scri
 		"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
 		"    <title>");
 	buf_append_html(b, title);
+	buf_append(b, " · ");
+	buf_append_html(b, cs_config.name);
 	buf_append(b,
-		" · cServer</title>\n"
+		"</title>\n"
 		"    <link rel=\"stylesheet\" href=\"/style.css\">\n");
 	if (script != NULL){
 		buf_append(b, "    <script src=\"");

@@ -4,6 +4,7 @@
 #include<sys/stat.h>
 #include<fcntl.h>
 #include"static.h"
+#include"config.h"
 
 static const char* content_type(const char* filename){
 	const char *dot = strrchr(filename, '.');
@@ -20,26 +21,29 @@ static const char* content_type(const char* filename){
 	return "text/plain";
 }
 
-void static_serve(int client, Request *req){
+int static_serve(int client, Request *req){
+	// "/../x" sortirait du dossier : on fait comme si le fichier n'existait pas
 	if (strstr(req->path, "..") != NULL){
-		send_404(client);
-		return;
+		return 0;
 	}
 
 	char filename[512];
-	snprintf(
+	int n = snprintf(
 			filename,
 			sizeof(filename),
-			"www%s",
+			"%s%s",
+			cs_config.static_dir,
 			strcmp(req->path, "/") == 0 ? "/index.html" : req->path
 	);
+	if (n < 0 || (size_t)n >= sizeof(filename)){
+		return 0;
+	}
 
 	struct stat info;
 	int file = -1;
 
 	if (stat(filename,&info) < 0 || !S_ISREG(info.st_mode) || (file  = open(filename, O_RDONLY)) < 0) {
-		send_404(client);
-		return;
+		return 0;
 	}
 
 	send_header(client, 200, content_type(filename), info.st_size);
@@ -53,4 +57,5 @@ void static_serve(int client, Request *req){
 	}
 
 	close(file);
+	return 1;
 }

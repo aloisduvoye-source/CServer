@@ -83,6 +83,7 @@ check 200 GET  /image.webp
 check 200 GET  "/index.html?v=2"
 check 200 GET  /index%2Ehtml
 check 404 GET  /nope.html
+check_contains "404 dumbass" /nope.html                            # la page 404 du site
 check 405 POST /index.html
 check 200 GET  /style.css
 check 200 GET  /guestbook.js

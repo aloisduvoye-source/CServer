@@ -7,9 +7,11 @@
 #include<sys/time.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
-#include"http.h"
+#include"cserver.h"
+#include"config.h"
 #include"router.h"
-#include"db.h"
+
+cs_app cs_config;
 
 static void handle_client(int client, const char *ip){
 
@@ -32,50 +34,71 @@ static void handle_client(int client, const char *ip){
 	http_free(&req);
 }
 
+// copie la configuration du site et complète ce qu'il n'a pas précisé
+static int load_config(const cs_app *app){
+	static const cs_route no_routes[] = { { NULL, NULL, NULL } };
 
-int main(void){
+	cs_config = *app;
+	if (cs_config.name == NULL)        {cs_config.name = "cserver";}
+	if (cs_config.port == 0)           {cs_config.port = 8080;}
+	if (cs_config.static_dir == NULL)  {cs_config.static_dir = "www";}
+	if (cs_config.db_path == NULL)     {cs_config.db_path = "data/site.db";}
+	if (cs_config.routes == NULL)      {cs_config.routes = no_routes;}
+	if (cs_config.cookie_name == NULL) {cs_config.cookie_name = "cs_session";}
+	if (cs_config.after_login == NULL) {cs_config.after_login = "/";}
+
+	// les variables d'environnement l'emportent : les tests s'en servent pour
+	// tourner sur un autre port, avec une base jetable
+	const char *port = getenv("CSERVER_PORT");
+	if (port != NULL){cs_config.port = atoi(port);}
+	const char *db = getenv("CSERVER_DB");
+	if (db != NULL){cs_config.db_path = db;}
+
+	if (cs_config.port <= 0 || cs_config.port > 65535){
+		fprintf(stderr, "port invalide : %d\n", cs_config.port);
+		return -1;
+	}
+	return 0;
+}
+
+int cs_run(const cs_app *app){
+	if (load_config(app) < 0){
+		return 1;
+	}
 
 	// socket(domain, type, protocol)  -> renvoie int (-1 si failure)
 	int server = socket(AF_INET, SOCK_STREAM, 0);
 	if (server < 0){
 		perror("socket");
-		exit(1);
-	}
-
-	// CSERVER_PORT permet aux tests de tourner à côté du serveur de dev
-	const char *port_env = getenv("CSERVER_PORT");
-	int port = port_env != NULL ? atoi(port_env) : 8080;
-	if (port <= 0 || port > 65535){
-		fprintf(stderr, "port invalide : %s\n", port_env);
-		exit(1);
+		return 1;
 	}
 
 	struct sockaddr_in adress;
 	memset(&adress,0,sizeof(adress));
 	adress.sin_family = AF_INET;
 	adress.sin_addr.s_addr = INADDR_ANY;
-	adress.sin_port =  htons(port);
+	adress.sin_port =  htons(cs_config.port);
 
 	int yes = 1;
 	setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
 	if (bind(server, (struct sockaddr *)&adress, sizeof(adress)) < 0){
 		perror("bind");
-		exit(1);
+		return 1;
 	}
 
 	if (listen(server,10) < 0){
 		perror("listen");
-		exit(1);
+		return 1;
 	}
 
 	if (db_init() < 0){
-		exit(1);
+		return 1;
 	}
 
 	signal(SIGCHLD, SIG_IGN);
 
-	printf("listening on %d\n", port);
+	printf("%s : listening on %d\n", cs_config.name, cs_config.port);
 
 	while (1) {
 		// accept() remplit `peer` avec l'adresse du client

@@ -234,8 +234,3 @@ void send_redirect(int client, const char *location, const char *extra_headers){
 	}
 	write_all(client, header, n);
 }
-
-void send_404(int client){
-	const char *body = "<h1>404 dumbass</h1>\n";
-	send_response(client, 404, "text/html", body, strlen(body));
-}

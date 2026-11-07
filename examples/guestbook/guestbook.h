@@ -1,7 +1,7 @@
 #ifndef GUESTBOOK_H
 #define GUESTBOOK_H
 
-#include"http.h"
+#include"cserver.h"
 
 // version HTML (fonctionne sans JavaScript)
 void guestbook_list(int client, Request *req);      // GET  /guestbook
