@@ -3,11 +3,29 @@
 #   make new                          crée le projet à la racine (main.c, templates/...)
 #   make run                          le lance        (make test : ses tests)
 #   make run DIR=examples/guestbook   lance un exemple
-#   make new DIR=../mon-site          crée un projet à part, avec sa copie de cserver
+#   make new ../mon-site              crée un projet à part, avec sa copie de cserver
+#                                     (ou make new DIR=../mon-site)
 #   make test-all                     les tests du framework, des exemples et du projet
 #
 # Les règles de compilation sont dans cserver/cserver.mk, les mêmes que pour un
 # projet indépendant.
+
+# "make new ../mon-site" : pour make, ../mon-site serait une deuxième cible à
+# construire. On la prend comme dossier du projet, et on en fait une cible vide.
+ifeq ($(firstword $(MAKECMDGOALS)),new)
+NEW_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+ifneq ($(words $(NEW_ARGS)),0)
+ifneq ($(words $(NEW_ARGS)),1)
+$(error make new : un seul dossier à la fois (reçu : $(NEW_ARGS)))
+endif
+ifneq ($(origin DIR),undefined)
+$(error make new : donner le dossier soit après new, soit avec DIR=, pas les deux)
+endif
+DIR := $(NEW_ARGS)
+$(eval .PHONY: $(NEW_ARGS))
+$(eval $(NEW_ARGS):;@:)
+endif
+endif
 
 DIR      ?= .
 SITE_DIR  = $(DIR)

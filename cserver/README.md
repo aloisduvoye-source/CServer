@@ -79,7 +79,7 @@ make run                            # puis ouvrir http://localhost:8080
 Le générateur ([`tools/new.sh`](tools/new.sh)) crée un projet qui compile et passe ses tests tout de suite : `main.c` (une page, un handler, les comptes prêts à être décommentés), `templates/` (dont un `layout.html` à personnaliser), `www/style.css`, `migrations/`, `test.sh`, et s'ils n'existent pas déjà `Makefile`, `.gitignore` et `README.md`. Il n'écrase jamais rien : si un de ces fichiers existe, rien n'est créé.
 
 - Lancé dans un dossier qui contient déjà ce cserver (le dépôt cloné, un sous-module), il l'**utilise sur place**.
-- Lancé vers un autre dossier (`make new DIR=../autre-site`), il **copie** le framework dans `autre-site/cserver/`.
+- Lancé vers un autre dossier (`make new ../autre-site`), il **copie** le framework dans `autre-site/cserver/`.
 
 Avec un sous-module :
 
