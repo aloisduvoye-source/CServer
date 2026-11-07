@@ -66,17 +66,22 @@ http://localhost:8080/hello?name=Zoé affiche « Hello Zoé! » dans le layout p
 
 ## Créer son projet
 
-**En une commande**, depuis le dépôt de cserver :
+**Le plus simple : cloner le dépôt**, qui sert de modèle, puis créer le projet à sa racine :
 
 ```sh
-make new DIR=../mon-site
-cd ../mon-site && make run          # puis ouvrir http://localhost:8080
+git clone <url du dépôt cserver> mon-site && cd mon-site
+make new
+make run                            # puis ouvrir http://localhost:8080
 ```
 
-Le générateur ([`tools/new.sh`](tools/new.sh)) crée un projet qui compile et passe ses tests tout de suite : `Makefile`, `main.c` (une page, un handler, les comptes prêts à être décommentés), `templates/` (dont un `layout.html` à personnaliser), `www/style.css`, `migrations/`, `test.sh`, `.gitignore` et `README.md`. Il n'écrit que dans un dossier vide ou inexistant.
+`make run DIR=examples/todo` lance un des exemples. Voir le [README du dépôt](../README.md) pour garder les mises à jour du framework tout en ayant son propre dépôt git.
 
-- Lancé depuis le dépôt de cserver, il **copie** le framework dans `mon-site/cserver/`.
-- Lancé depuis un cserver qui est **déjà dans le projet** (un sous-module), il l'utilise sur place :
+Le générateur ([`tools/new.sh`](tools/new.sh)) crée un projet qui compile et passe ses tests tout de suite : `main.c` (une page, un handler, les comptes prêts à être décommentés), `templates/` (dont un `layout.html` à personnaliser), `www/style.css`, `migrations/`, `test.sh`, et s'ils n'existent pas déjà `Makefile`, `.gitignore` et `README.md`. Il n'écrase jamais rien : si un de ces fichiers existe, rien n'est créé.
+
+- Lancé dans un dossier qui contient déjà ce cserver (le dépôt cloné, un sous-module), il l'**utilise sur place**.
+- Lancé vers un autre dossier (`make new DIR=../autre-site`), il **copie** le framework dans `autre-site/cserver/`.
+
+Avec un sous-module :
 
   ```sh
   mkdir mon-site && cd mon-site && git init
@@ -112,7 +117,7 @@ build/
 data/
 ```
 
-Les sites de [`examples/`](../examples/) sont des projets comme les autres : le Makefile du dépôt choisit seulement lequel compiler (`make SITE=todo run`) avant d'inclure `cserver.mk`.
+Les sites de [`examples/`](../examples/) sont des projets comme les autres : le Makefile du dépôt choisit seulement lequel compiler (`make run DIR=examples/todo`, `.` par défaut) avant d'inclure `cserver.mk`.
 
 ## Organisation d'un site
 
