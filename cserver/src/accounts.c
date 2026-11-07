@@ -12,9 +12,6 @@
 #define TOKEN_BYTES     32                  // 256 bits d'aléatoire
 #define TOKEN_HEX       (TOKEN_BYTES * 2)
 
-#define MAX_FAILURES   5                    // échecs de connexion autorisés...
-#define FAILURE_WINDOW (15 * 60)            // ... par adresse IP, sur 15 minutes
-
 _Static_assert(CS_HASH_MAX >= CRYPT_OUTPUT_SIZE, "CS_HASH_MAX trop petit pour libcrypt");
 
 /* ---------------------------------------------------------------- mots de passe */
@@ -77,9 +74,9 @@ int cs_user_login(cs_ctx *c, const char *name, const char *password, cs_user *us
 
 	// trop d'échecs récents depuis cette adresse : on refuse sans même vérifier
 	long now = (long)time(NULL);
-	int failures = db_login_failures(db, c->req.ip, now - FAILURE_WINDOW);
+	int failures = db_login_failures(db, c->req.ip, now - cs_config.login_window);
 	if (failures < 0){return CS_LOGIN_ERROR;}
-	if (failures >= MAX_FAILURES){return CS_LOGIN_BLOCKED;}
+	if (failures >= cs_config.login_attempts){return CS_LOGIN_BLOCKED;}
 
 	char hash[CS_HASH_MAX];
 	int found = name != NULL && db_user_find(db, name, user, hash, sizeof(hash)) == 1;
@@ -87,7 +84,7 @@ int cs_user_login(cs_ctx *c, const char *name, const char *password, cs_user *us
 	// le hachage est calculé même si le nom n'existe pas (même durée de réponse)
 	int valid = password != NULL && cs_password_verify(password, found ? hash : NULL) && found;
 	if (!valid){
-		db_login_failure_add(db, c->req.ip, now, now - FAILURE_WINDOW);
+		db_login_failure_add(db, c->req.ip, now, now - cs_config.login_window);
 		return CS_LOGIN_WRONG;
 	}
 	return CS_LOGIN_OK;

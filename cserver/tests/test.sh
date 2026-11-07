@@ -99,26 +99,32 @@ wait $pids
 # --------------------------------------------------------------- comptes : inscription
 JEAN="$DBDIR/jean.cookies"
 ZOE="$DBDIR/zoe.cookies"
-check 200 GET  /signup
-check 200 GET  /login
-check_contains "<title>log in · test</title>" /login           # login.html du framework
-check 303 POST /signup --data-binary "name=jean&password=motdepasse1" -c "$JEAN"
-check 409 POST /signup --data-binary "name=Jean&password=autrechose1"        # pris (casse ignorée)
-check 400 POST /signup --data-binary "name=ab&password=motdepasse1"          # trop court
-check 400 POST /signup --data-binary "name=jean+d&password=motdepasse1"      # espace interdit
-check 400 POST /signup --data-binary "name=%3Cb%3E&password=motdepasse1"     # < > interdits
-check 400 POST /signup --data-binary "name=zoe&password=court"               # mot de passe trop court
-check_contains 'value="Jean"' /signup --data-binary "name=Jean&password=autrechose1"   # nom réaffiché
-check 303 POST /signup --data-binary "name=zoe&password=motdepasse2" -c "$ZOE"
-check_contains "Set-Cookie: test_session="  /signup --data-binary "name=max&password=motdepasse3" -D -
-check_contains "HttpOnly; SameSite=Lax"     /signup --data-binary "name=lea&password=motdepasse4" -D -
-check_contains "Location: /prive"           /signup --data-binary "name=tom&password=motdepasse5" -D -   # after_login
+check 200 GET  /inscription
+check 200 GET  /connexion
+check_contains "<title>log in · test</title>" /connexion           # login.html du framework
+check 303 POST /inscription --data-binary "name=jean&password=motdepasse1" -c "$JEAN"
+check 409 POST /inscription --data-binary "name=Jean&password=autrechose1"        # pris (casse ignorée)
+check 400 POST /inscription --data-binary "name=ab&password=motdepasse1"          # trop court
+check 400 POST /inscription --data-binary "name=jean+d&password=motdepasse1"      # espace interdit
+check 400 POST /inscription --data-binary "name=%3Cb%3E&password=motdepasse1"     # < > interdits
+check 400 POST /inscription --data-binary "name=zoe&password=court"               # mot de passe trop court
+check 400 POST /inscription --data-binary "name=zoe&password=neufchars"           # 9 : password_min = 10
+check 400 POST /inscription --data-binary "name=nomtroplong13&password=motdepasse1"   # 13 : username_max = 12
+check_contains "password: 10 to 128 characters" /inscription --data-binary "name=zoe&password=court"
+check_contains "name: 3 to 12 letters"          /inscription --data-binary "name=ab&password=motdepasse1"
+check_contains 'minlength="10"'                 /inscription            # la règle dans le formulaire
+check_contains 'action="/connexion"'            /connexion              # login_path dans login.html
+check_contains 'value="Jean"' /inscription --data-binary "name=Jean&password=autrechose1"   # nom réaffiché
+check 303 POST /inscription --data-binary "name=zoe&password=motdepasse2" -c "$ZOE"
+check_contains "Set-Cookie: test_session="  /inscription --data-binary "name=max&password=motdepasse3" -D -
+check_contains "HttpOnly; SameSite=Lax"     /inscription --data-binary "name=lea&password=motdepasse4" -D -
+check_contains "Location: /prive"           /inscription --data-binary "name=tom&password=motdepasse5" -D -   # after_login
 
 # --------------------------------------------------------------- comptes : session
 check_contains "bonjour jean" /prive -b "$JEAN"
 check_contains "bonjour zoe"  /prive -b "$ZOE"
 check 303 GET  /prive                                          # anonyme
-check_contains "Location: /login" /prive -D -
+check_contains "Location: /connexion" /prive -D -
 check_contains '<p id="user">[jean]</p>'  /vars -b "$JEAN"     # variable user des modèles
 check_contains '<span class="user">jean'  /vars -b "$JEAN"     # layout du framework
 TOKEN=$(awk '$6 == "test_session" { print $7 }' "$JEAN")
@@ -133,9 +139,9 @@ check 303 GET  /prive  -b "$JEAN"
 check 303 GET  /prive  -b "$DBDIR/jean.old"                     # ancien cookie copié
 
 # --------------------------------------------------------------- comptes : connexion
-check 303 POST /login --data-binary "name=jean&password=motdepasse1" -c "$JEAN"
+check 303 POST /connexion --data-binary "name=jean&password=motdepasse1" -c "$JEAN"
 check_contains "bonjour jean" /prive -b "$JEAN"
-check 303 POST /login --data-binary "name=JEAN&password=motdepasse1"          # casse ignorée
+check 303 POST /connexion --data-binary "name=JEAN&password=motdepasse1"          # casse ignorée
 
 # connexion par API : écrite par le site de test avec les briques publiques
 API="$DBDIR/api.cookies"
@@ -144,13 +150,12 @@ check_contains "bonjour jean"     /prive -b "$API"
 check_contains '{"ok":true}'      /api/logout --data-binary "" -b "$API" -c "$API"
 check 303 GET /prive -b "$API"
 
-# 5 échecs par IP en 15 minutes, puis blocage
-check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 1
-check_contains "invalid name or password" /login --data-binary "name=inconnu&password=motdepasse1" # 2
-check_contains "invalid name or password" /login --data-binary "name=jean&password=mauvais"        # 3
-check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 4
-check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 5
-check 429 POST /login --data-binary "name=jean&password=motdepasse1"       # bloqué, même avec le bon
+# login_attempts = 3 échecs par IP, puis blocage
+check 401 POST /connexion --data-binary "name=jean&password=mauvais"                                   # 1
+check_contains "invalid name or password" /connexion --data-binary "name=inconnu&password=motdepasse1" # 2
+check_contains "invalid name or password" /connexion --data-binary "name=jean&password=mauvais"        # 3
+check 429 POST /connexion --data-binary "name=jean&password=motdepasse1"       # bloqué, même avec le bon
+check_contains "try again in 10 minutes" /connexion --data-binary "name=jean&password=motdepasse1"    # login_window
 check_contains '{"error":"too many attempts"}' /api/login --data-binary "name=jean&password=motdepasse1"
 
 # briques : en-têtes et mots de passe

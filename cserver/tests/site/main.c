@@ -183,7 +183,13 @@ static const cs_route routes[] = {
 	CS_GET ("/prive",      private_page),
 	CS_GET ("/notes",      notes_count),
 	CS_POST("/notes",      notes_add),
-	CS_AUTH_ROUTES,
+	// chemins à lui (login_path, signup_path) : les routes de comptes sont déclarées
+	// à la main, CS_AUTH_ROUTES utilisant les chemins par défaut
+	CS_GET ("/inscription", cs_signup_page),
+	CS_POST("/inscription", cs_signup),
+	CS_GET ("/connexion",   cs_login_page),
+	CS_POST("/connexion",   cs_login),
+	CS_POST("/logout",      cs_logout),
 	CS_END
 };
 
@@ -195,6 +201,14 @@ int main(void){
 		.accounts    = 1,
 		.cookie_name = "test_session",
 		.after_login = "/prive",
+
+		// des règles différentes des valeurs par défaut, pour vérifier qu'elles s'appliquent
+		.username_max   = 12,
+		.password_min   = 10,
+		.login_attempts = 3,
+		.login_window   = 600,
+		.login_path     = "/connexion",
+		.signup_path    = "/inscription",
 	};
 	return cs_run(&app);
 }

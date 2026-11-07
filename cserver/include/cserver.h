@@ -111,7 +111,8 @@ void cs_header(cs_ctx *c, const char *line);
 //   {{! commentaire }}    rien
 //
 // Une variable absente vaut "". Toujours disponibles : site_name, user (le nom de
-// l'utilisateur connecté, ou vide) et accounts ("1" si le site a des comptes). Les boucles se font en C : rendre un petit modèle
+// l'utilisateur connecté, ou vide), accounts ("1" si le site a des comptes),
+// login_path et signup_path. Les boucles se font en C : rendre un petit modèle
 // par élément avec cs_render(), puis passer le tout au modèle de la page avec cs_set_html().
 //
 // Le framework fournit layout.html, login.html et signup.html ; un fichier du même nom
@@ -173,7 +174,7 @@ typedef struct {
 
 // utilisateur connecté, ou NULL
 const cs_user *cs_current_user(cs_ctx *c);
-// pareil, mais si personne n'est connecté : redirige vers /login et renvoie NULL
+// pareil, mais si personne n'est connecté : redirige vers login_path et renvoie NULL
 const cs_user *cs_require_user(cs_ctx *c);
 
 // --- les briques : pour écrire ses propres pages de comptes (connexion par e-mail,
@@ -193,8 +194,8 @@ int  cs_password_verify(const char *password, const char *hash);
 long cs_user_create(cs_ctx *c, const char *name, const char *password);
 
 // vérifie nom + mot de passe (name ou password peuvent être NULL) : même durée que
-// le nom existe ou non ; après 5 échecs en 15 minutes depuis la même IP, refuse
-// sans vérifier. Si CS_LOGIN_OK, user est rempli.
+// le nom existe ou non ; après login_attempts échecs en login_window secondes depuis
+// la même IP, refuse sans vérifier. Si CS_LOGIN_OK, user est rempli.
 enum { CS_LOGIN_OK = 1, CS_LOGIN_WRONG = 0, CS_LOGIN_ERROR = -1, CS_LOGIN_BLOCKED = -2 };
 int  cs_user_login(cs_ctx *c, const char *name, const char *password, cs_user *user);
 
@@ -236,7 +237,8 @@ typedef struct {
 #define CS_PAGE(p, tpl, t)  { .method = "GET",  .path = (p), .page = (tpl), .title = (t) }
 #define CS_END              { .method = NULL }
 
-// inscription, connexion, déconnexion, aux chemins qu'utilisent les modèles du framework
+// inscription, connexion, déconnexion, aux chemins par défaut. Si le site change
+// login_path ou signup_path, il déclare ces routes lui-même, avec ses chemins.
 #define CS_AUTH_ROUTES \
 	CS_GET ("/signup", cs_signup_page), \
 	CS_POST("/signup", cs_signup),      \
@@ -265,6 +267,16 @@ typedef struct {
 	                               //                                           défaut : "cs_session"
 	const char     *after_login;   // où aller après connexion, inscription
 	                               // et déconnexion                            défaut : "/"
+
+	// règles des comptes (0 ou NULL : la valeur par défaut)
+	int             username_min;  // longueur minimale d'un nom                défaut : 3
+	int             username_max;  // longueur maximale (au plus 31)            défaut : 20
+	int             password_min;  // longueur minimale d'un mot de passe       défaut : 8
+	int             login_attempts;// échecs de connexion autorisés par IP...   défaut : 5
+	int             login_window;  // ... sur cette durée, en secondes          défaut : 900
+	const char     *login_path;    // page de connexion (cs_require_user
+	                               // y redirige)                               défaut : "/login"
+	const char     *signup_path;   // page d'inscription                        défaut : "/signup"
 } cs_app;
 
 // lance le serveur ; ne revient qu'en cas d'erreur (et renvoie alors 1)

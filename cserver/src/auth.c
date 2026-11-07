@@ -1,12 +1,11 @@
 // les pages de comptes prêtes à l'emploi (CS_AUTH_ROUTES), écrites uniquement
 // avec les briques publiques d'accounts.c : un site peut faire les siennes pareil.
+// Les règles (longueurs, tentatives, chemins) viennent de cs_app.
+#include<stdio.h>
 #include<string.h>
 #include<ctype.h>
 #include"internal.h"
 
-#define USERNAME_MIN 3
-#define USERNAME_MAX 20
-#define PASSWORD_MIN 8
 #define PASSWORD_MAX 128
 
 // formulaire d'inscription (signup = 1) ou de connexion (signup = 0) : modèles
@@ -17,6 +16,7 @@ static void send_form(cs_ctx *c, int status, int signup, const char *name, const
 	cs_vars_init(&v);
 	cs_set(&v, "title", signup ? "sign up" : "log in");
 	cs_set(&v, "name", name);
+	cs_set_long(&v, "password_min", cs_config.password_min);
 	if (error != NULL){cs_set(&v, "error", error);}
 	cs_page(c, status, signup ? "signup.html" : "login.html", &v);
 }
@@ -29,10 +29,10 @@ void cs_login_page(cs_ctx *c){
 	send_form(c, 200, 0, "", NULL);
 }
 
-// 3 à 20 caractères parmi a-z A-Z 0-9 _ - : pas d'espaces, pas de sosies Unicode
+// lettres, chiffres, _ et - seulement : pas d'espaces, pas de sosies Unicode
 static int valid_username(const char *s){
 	size_t n = strlen(s);
-	if (n < USERNAME_MIN || n > USERNAME_MAX){return 0;}
+	if (n < (size_t)cs_config.username_min || n > (size_t)cs_config.username_max){return 0;}
 	for (; *s != '\0'; s++){
 		if (!isalnum((unsigned char)*s) && *s != '_' && *s != '-'){return 0;}
 	}
@@ -42,18 +42,20 @@ static int valid_username(const char *s){
 void cs_signup(cs_ctx *c){
 	char name[64];
 	char password[PASSWORD_MAX + 1];
+	char error[96];
 
 	// attention : si cs_form échoue, le buffer n'est pas une chaîne valide
-	if (cs_form(c, "name", name, sizeof(name)) < 0){
-		send_form(c, 400, 1, "", "name: 3 to 20 letters, digits, _ or -");
+	int has_name = cs_form(c, "name", name, sizeof(name)) == 0;
+	if (!has_name || !valid_username(name)){
+		snprintf(error, sizeof(error), "name: %d to %d letters, digits, _ or -",
+			cs_config.username_min, cs_config.username_max);
+		send_form(c, 400, 1, has_name ? name : "", error);
 		return;
 	}
-	if (!valid_username(name)){
-		send_form(c, 400, 1, name, "name: 3 to 20 letters, digits, _ or -");
-		return;
-	}
-	if (cs_form(c, "password", password, sizeof(password)) < 0 || strlen(password) < PASSWORD_MIN){
-		send_form(c, 400, 1, name, "password: 8 to 128 characters");
+	if (cs_form(c, "password", password, sizeof(password)) < 0
+	 || strlen(password) < (size_t)cs_config.password_min){
+		snprintf(error, sizeof(error), "password: %d to %d characters", cs_config.password_min, PASSWORD_MAX);
+		send_form(c, 400, 1, name, error);
 		return;
 	}
 
@@ -76,6 +78,7 @@ void cs_login(cs_ctx *c){
 	int has_password = cs_form(c, "password", password, sizeof(password)) == 0;
 
 	cs_user user;
+	char error[96];
 	switch (cs_user_login(c, has_name ? name : NULL, has_password ? password : NULL, &user)){
 		case CS_LOGIN_OK:
 			if (cs_session_start(c, user.id) < 0){
@@ -85,9 +88,13 @@ void cs_login(cs_ctx *c){
 			cs_redirect(c, cs_config.after_login);
 			return;
 
-		case CS_LOGIN_BLOCKED:
-			send_form(c, 429, 0, "", "too many failed attempts, try again in 15 minutes");
+		case CS_LOGIN_BLOCKED: {
+			int minutes = (cs_config.login_window + 59) / 60;
+			snprintf(error, sizeof(error), "too many failed attempts, try again in %d minute%s",
+				minutes, minutes > 1 ? "s" : "");
+			send_form(c, 429, 0, "", error);
 			return;
+		}
 
 		case CS_LOGIN_WRONG:
 			// même message que le nom ou le mot de passe soit faux : on ne révèle

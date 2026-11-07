@@ -141,7 +141,7 @@ const cs_user *cs_current_user(cs_ctx *c){
 const cs_user *cs_require_user(cs_ctx *c){
 	const cs_user *user = cs_current_user(c);
 	if (user == NULL){
-		cs_redirect(c, "/login");
+		cs_redirect(c, cs_config.login_path);
 	}
 	return user;
 }

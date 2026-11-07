@@ -6,7 +6,7 @@
     </form>
 {{/user}}
 {{^user}}
-    <p><a href="/login">log in</a> or <a href="/signup">sign up</a> to leave a message.</p>
+    <p><a href="{{login_path}}">log in</a> or <a href="{{signup_path}}">sign up</a> to leave a message.</p>
 {{/user}}
     <section id="messages">
 {{{messages}}}

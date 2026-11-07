@@ -49,6 +49,22 @@ static int load_config(const cs_app *app){
 	if (cs_config.routes == NULL)      {cs_config.routes = no_routes;}
 	if (cs_config.cookie_name == NULL) {cs_config.cookie_name = "cs_session";}
 	if (cs_config.after_login == NULL) {cs_config.after_login = "/";}
+	if (cs_config.username_min == 0)   {cs_config.username_min = 3;}
+	if (cs_config.username_max == 0)   {cs_config.username_max = 20;}
+	if (cs_config.password_min == 0)   {cs_config.password_min = 8;}
+	if (cs_config.login_attempts == 0) {cs_config.login_attempts = 5;}
+	if (cs_config.login_window == 0)   {cs_config.login_window = 15 * 60;}
+	if (cs_config.login_path == NULL)  {cs_config.login_path = "/login";}
+	if (cs_config.signup_path == NULL) {cs_config.signup_path = "/signup";}
+
+	// un nom doit tenir dans cs_user.name
+	int name_room = (int)sizeof(((cs_user *)0)->name) - 1;
+	if (cs_config.username_min < 1 || cs_config.username_max > name_room
+	 || cs_config.username_min > cs_config.username_max || cs_config.password_min < 1
+	 || cs_config.login_attempts < 1 || cs_config.login_window < 1){
+		fprintf(stderr, "règles des comptes invalides (noms : 1 à %d caractères)\n", name_room);
+		return -1;
+	}
 
 	// les variables d'environnement l'emportent : les tests s'en servent pour
 	// tourner sur un autre port, avec une base jetable
@@ -75,6 +91,16 @@ static int load_config(const cs_app *app){
 		             || r->handler == cs_logout;
 		if (auth_page && !cs_config.accounts){
 			fprintf(stderr, "route %s %s : les pages de comptes demandent .accounts = 1\n", r->method, r->path);
+			return -1;
+		}
+
+		// les formulaires du framework envoient vers login_path et signup_path
+		int login_page = r->handler == cs_login_page || r->handler == cs_login;
+		int signup_page = r->handler == cs_signup_page || r->handler == cs_signup;
+		if ((login_page && strcmp(r->path, cs_config.login_path) != 0)
+		 || (signup_page && strcmp(r->path, cs_config.signup_path) != 0)){
+			fprintf(stderr, "route %s %s : ne correspond pas à login_path (%s) ou signup_path (%s)\n",
+				r->method, r->path, cs_config.login_path, cs_config.signup_path);
 			return -1;
 		}
 	}
