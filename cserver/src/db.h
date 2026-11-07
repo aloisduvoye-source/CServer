@@ -17,9 +17,6 @@ int db_init(void);
 // (une connexion SQLite ne doit jamais être partagée entre processus)
 sqlite3 *db_open(void);
 
-// incrémente le compteur `name` et renvoie sa nouvelle valeur, -1 si erreur
-long db_counter_incr(sqlite3 *db, const char *name);
-
 /* ---------------------------------------------------------------- comptes */
 
 // renvoie l'id du nouvel utilisateur, 0 si le nom est déjà pris, -1 si erreur

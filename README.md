@@ -1,18 +1,20 @@
 # CServer
 
-Serveur HTTP en C, tout à la main (bibliothèques : SQLite, et libcrypt pour les mots de passe).
+Mini framework web en C, tout à la main (bibliothèques : SQLite, et libcrypt pour les mots de passe).
+
+- `cserver/` : le framework
+- `examples/guestbook/` : un site qui l'utilise (livre d'or avec comptes)
 
 ## Compiler et lancer
 
 ```sh
 sudo apt install libsqlite3-dev libcrypt-dev   # une seule fois
-make
-./server
+make run
 ```
 
-Depuis la racine du projet, puis ouvrir http://localhost:8080.
+Puis ouvrir http://localhost:8080.
 
-Tests : `./test.sh` (sur le port 8081, en parallèle du serveur de dev)
+Tests : `make test` (sur le port 8081, en parallèle du serveur de dev)
 
 ## Plan
 
@@ -28,3 +30,14 @@ Objectif : un livre d'or (formulaire + liste des messages).
 - [x] Livre d'or (enregistrer et afficher les messages)
 - [x] API JSON
 - [x] Sessions et cookies
+
+## Framework
+
+Objectif : réutiliser `cserver/` pour d'autres sites, sans y toucher.
+
+- [x] Séparer le framework et le site
+- [ ] Configuration et `cs_run()`
+- [ ] Contexte `cs_ctx` passé aux handlers
+- [ ] Migrations par nom
+- [ ] Modèles HTML
+- [ ] Un deuxième site d'exemple

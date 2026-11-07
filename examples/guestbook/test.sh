@@ -2,10 +2,11 @@
 # Compile, lance un serveur de test, vérifie ses réponses, puis l'arrête.
 # Port 8081 par défaut : le serveur de dev peut continuer de tourner sur 8080.
 
+cd "$(dirname "$0")" || exit 1   # le serveur cherche www/ dans le dossier courant
 PORT=${PORT:-8081}
 BASE="localhost:$PORT"
 
-make -s || exit 1
+make -s -C ../.. || exit 1
 
 # base jetable : les tests ne touchent pas à data/site.db
 DBDIR=$(mktemp -d)
@@ -75,26 +76,6 @@ check_type() { # check_type <content-type attendu> <chemin>
 	fi
 }
 
-check_post() { # check_post <corps attendu> <chemin> <données>
-	got=$(curl -s --data-binary "$3" "$BASE$2")
-	if [ "$got" = "$1" ]; then
-		echo "ok     POST $2 -> $got"
-	else
-		echo "ECHEC  POST $2 -> $got (attendu $1)"
-		FAIL=1
-	fi
-}
-
-check_body() { # check_body <corps attendu> <chemin>
-	got=$(curl -s --path-as-is "$BASE$2")
-	if [ "$got" = "$1" ]; then
-		echo "ok     GET $2 -> $got"
-	else
-		echo "ECHEC  GET $2 -> $got (attendu $1)"
-		FAIL=1
-	fi
-}
-
 # fichiers statiques
 check 200 GET  /
 check 200 GET  /about.html
@@ -103,58 +84,24 @@ check 200 GET  "/index.html?v=2"
 check 200 GET  /index%2Ehtml
 check 404 GET  /nope.html
 check 405 POST /index.html
-
-# sécurité
-check 404 GET  /../main.c
-check 404 GET  /%2e%2e/main.c
-check 400 GET  /%ZZ
-check 400 GET  /a%00b
-
-# routes
-check 200 GET  /api/heure
-check_body "Bonjour inconnu"     "/api/bonjour"
-check_body "Bonjour Jean Dupont" "/api/bonjour?nom=Jean+Dupont"
-check_body "Bonjour Zoé"         "/api/bonjour?nom=Zo%C3%A9"
-check_body "Bonjour Tom&Jerry"   "/api/bonjour?x=1&nom=Tom%26Jerry"
-check_body "Bonjour 1+1=2"       "/api/bonjour?nom=1%2B1%3D2"
-check_body "Bonjour inconnu"     "/api/bonjour?nom=%ZZ"
-
-# POST
-BIG=$(head -c 100000 /dev/zero | tr '\0' a)
-check_post "Bonjour Jean Dupont" /api/bonjour "nom=Jean+Dupont"
-check_post "Bonjour Zoé"         /api/bonjour "x=1&nom=Zo%C3%A9"
-check_post "Bonjour Jean"        /api/bonjour "x=$BIG&nom=Jean"   # 100 Ko : plusieurs read()
-check_post "Bonjour inconnu"     /api/bonjour ""
-check 400 POST /api/bonjour -H "Content-Length: abc"
-check 400 POST /api/bonjour -H "Content-Length: -5"
-head -c 2000000 /dev/zero > "$TMP"
-check 413 POST /api/bonjour --data-binary @"$TMP"                 # > 1 Mo
-
-# échappement HTML
-check_contains "<h1>Bonjour inconnu</h1>" "/bonjour"
-check_contains "<h1>Bonjour Zoé</h1>"     "/bonjour?nom=Zo%C3%A9"
-check_contains "<h1>Bonjour &lt;script&gt;alert(1)&lt;/script&gt;</h1>" \
-               "/bonjour?nom=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
-check_contains "<h1>Bonjour Tom &amp; &quot;Jerry&quot; l&#39;ami</h1>" \
-               "/bonjour?nom=Tom+%26+%22Jerry%22+l%27ami"
-
-# SQLite : 20 écritures en parallèle par 20 processus, aucune ne doit se perdre
-check_body "1" /api/visites
-pids=""
-for i in $(seq 20); do
-	curl -s -o /dev/null "$BASE/api/visites" &
-	pids="$pids $!"
-done
-wait $pids
-check_body "22" /api/visites
-
-# frontend
-check 200 GET /style.css
-check 200 GET /guestbook.js
+check 200 GET  /style.css
+check 200 GET  /guestbook.js
 check_type "text/css"        /style.css
 check_type "text/javascript" /guestbook.js
 check_contains 'href="/style.css"'   /about.html
 check_contains 'src="/guestbook.js"' /guestbook
+
+# sécurité : test.sh existe juste au-dessus de www/, il ne doit pas être servi
+check 404 GET  /../test.sh
+check 404 GET  /%2e%2e/test.sh
+check 400 GET  /%ZZ
+check 400 GET  /a%00b
+
+# requêtes invalides (refusées avant même d'arriver à une route)
+check 400 POST /api/messages -H "Content-Length: abc"
+check 400 POST /api/messages -H "Content-Length: -5"
+head -c 2000000 /dev/zero > "$TMP"
+check 413 POST /api/messages --data-binary @"$TMP"                # > 1 Mo
 
 # comptes : inscription (curl garde les cookies dans un fichier, comme un navigateur)
 JEAN="$DBDIR/jean.cookies"
@@ -191,10 +138,12 @@ check_contains "premier message"        /guestbook
 check_absent   "anonyme"                /guestbook
 check_absent   "No messages yet"        /guestbook
 
-# livre d'or : XSS
+# livre d'or : échappement HTML
 check 303 POST /guestbook --data-binary "message=%3Cscript%3Ealert(1)%3C%2Fscript%3E" -b "$JEAN"
-check_contains "&lt;script&gt;alert(1)&lt;/script&gt;" /guestbook
-check_absent   "<script>"                              /guestbook
+check 303 POST /guestbook --data-binary "message=Tom+%26+%22Jerry%22+l%27ami" -b "$ZOE"
+check_contains "&lt;script&gt;alert(1)&lt;/script&gt;"     /guestbook
+check_contains "Tom &amp; &quot;Jerry&quot; l&#39;ami"     /guestbook
+check_absent   "<script>"                                  /guestbook
 
 # livre d'or : le plus récent en premier
 first=$(curl -s "$BASE/guestbook" | grep -o 'premier message\|alert(1)' | head -1)
@@ -210,6 +159,7 @@ LONG=$(head -c 4001 /dev/zero | tr '\0' a)
 check 400 POST /guestbook --data-binary "message="      -b "$JEAN"
 check 400 POST /guestbook --data-binary "message=+++"   -b "$JEAN"
 check 400 POST /guestbook --data-binary "message=%FF"   -b "$JEAN"
+check 400 POST /guestbook --data-binary "message=%ZZ"   -b "$JEAN"
 check 400 POST /guestbook --data-binary "message=$LONG" -b "$JEAN"
 
 # API JSON : lecture
@@ -224,10 +174,28 @@ check 401 POST /api/messages --data-binary "message=sans+session"
 check_contains '{"error":"login required"}' /api/messages --data-binary "message=x"
 check 201 POST /api/messages --data-binary "message=via+fetch" -b "$ZOE"
 check_contains '"name":"zoe","message":"via fetch"' /api/messages
-check_contains '"message":"Tom \"T\" \\ x"' /api/messages --data-binary 'message=Tom+%22T%22+%5C+x' -b "$ZOE"
+check_contains '"message":"Tom \"T\" \\ x"'   /api/messages --data-binary 'message=Tom+%22T%22+%5C+x' -b "$ZOE"
+check_contains '"message":"Zoé & 1+1=2"'       /api/messages --data-binary 'message=Zo%C3%A9+%26+1%2B1%3D2' -b "$ZOE"
+BIG=$(head -c 100000 /dev/zero | tr '\0' a)
+check_contains '"message":"gros corps"'        /api/messages --data-binary "x=$BIG&message=gros+corps" -b "$ZOE"   # 100 Ko : plusieurs read()
 check 400 POST /api/messages --data-binary "message=" -b "$ZOE"
 check_contains '{"error":"message is required' /api/messages --data-binary "message=" -b "$ZOE"
 check 400 POST /api/messages --data-binary "message=%FF" -b "$ZOE"
+
+# SQLite : 20 messages en parallèle par 20 processus, aucun ne doit se perdre
+pids=""
+for i in $(seq 20); do
+	curl -s -o /dev/null --data-binary "message=parallele+$i" -b "$ZOE" "$BASE/api/messages" &
+	pids="$pids $!"
+done
+wait $pids
+n=$(curl -s "$BASE/api/messages" | grep -o '"message":"parallele [0-9]*"' | sort -u | wc -l)
+if [ "$n" -eq 20 ]; then
+	echo "ok     POST /api/messages x20 en parallèle -> 20 enregistrés"
+else
+	echo "ECHEC  POST /api/messages x20 en parallèle -> $n enregistrés"
+	FAIL=1
+fi
 
 # suppression : seulement ses propres messages
 ID=$(curl -s "$BASE/api/messages" | sed -n 's/.*"id":\([0-9]*\),"name":"jean","message":"premier message".*/\1/p')
