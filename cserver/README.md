@@ -376,6 +376,16 @@ cs_finish
 
 Le framework a ses propres tests ([`tests/test.sh`](tests/test.sh), et [`tests/minimal/`](tests/minimal/) pour un site sans base ni comptes). Dans le dépôt, `make test-all` les lance, puis ceux de chaque exemple.
 
+**Fuzzing** : `make fuzz` (dans le dépôt, avec clang) envoie des millions d'entrées aléatoires ou abîmées aux parties qui lisent des données venues de l'extérieur, compilées avec AddressSanitizer pour repérer le moindre accès mémoire invalide :
+
+| Cible | Teste |
+|---|---|
+| `fuzz_http` | l'analyse des requêtes, puis la lecture de la query, du formulaire et des cookies |
+| `fuzz_text` | `cs_url_decode`, `cs_params_get`, les échappements HTML et JSON, l'UTF-8 |
+| `fuzz_template` | le moteur de modèles, avec des modèles mal formés |
+
+Chaque cible tourne `FUZZ_TIME` secondes (60 par défaut : `make fuzz FUZZ_TIME=600` pour une longue session). Un plantage arrête tout et laisse l'entrée qui le provoque dans `tests/fuzz/build/crash-*` ; une fois corrigé, on la copie dans [`tests/fuzz/seeds/`](tests/fuzz/seeds/), où elle sera rejouée à chaque session.
+
 ## Limites connues
 
 - **Pas de HTTPS** : à placer derrière un proxy (Caddy, nginx) pour une mise en ligne, et le cookie n'a pas l'option `Secure`.

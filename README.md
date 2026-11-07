@@ -17,6 +17,7 @@ make run          # le lance, puis ouvrir http://localhost:8080
 | `make run DIR=examples/guestbook` | un exemple : `examples/guestbook` (livre d'or, comptes, API JSON) ou `examples/todo` (liste de tâches) |
 | `make new ../autre-site` | un projet à part, avec sa propre copie du framework |
 | `make test-all` | les tests du framework, des exemples et de ton projet |
+| `make fuzz` | le fuzzing du framework (demande clang) |
 
 - `cserver/` : le framework — **[guide du framework](cserver/README.md)**
 - `examples/` : des sites complets, pour s'inspirer

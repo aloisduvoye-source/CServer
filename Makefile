@@ -64,3 +64,30 @@ clean::
 	rm -f cserver/libcserver.a
 
 .PHONY: new all test-cserver test-all
+
+# --- fuzzing (clang et libFuzzer) : make fuzz, ou make fuzz FUZZ_TIME=300
+#     Chaque cible tourne FUZZ_TIME secondes ; un plantage s'arrête avec l'entrée
+#     qui le provoque, dans cserver/tests/fuzz/build/crash-*
+CLANG     ?= $(shell command -v clang || command -v clang-18)
+FUZZ_TIME ?= 60
+FUZZ      = cserver/tests/fuzz
+FUZZERS   = http text template
+FUZZ_FLAGS = -g -O1 -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined
+
+fuzz: $(FUZZERS:%=$(FUZZ)/build/fuzz_%)
+	@for f in $(FUZZERS); do \
+		echo "== fuzz_$$f ($(FUZZ_TIME) s)"; \
+		mkdir -p $(FUZZ)/build/corpus/$$f; \
+		$(FUZZ)/build/fuzz_$$f -max_total_time=$(FUZZ_TIME) -print_final_stats=1 \
+			-artifact_prefix=$(FUZZ)/build/ $(FUZZ)/build/corpus/$$f $(FUZZ)/seeds/$$f 2>&1 \
+			| grep -E 'ERROR|SUMMARY|Done|stat::number_of_executed_units|stat::peak|cov:' | tail -4 || exit 1; \
+	done
+
+# le framework est recompilé avec les sanitizers, directement depuis ses sources
+$(FUZZ)/build/fuzz_%: $(FUZZ)/fuzz_%.c $(CS_SRC) $(CS_HDR) $(CS_BUILD)/migrations.c $(CS_BUILD)/templates.c
+	@test -n "$(CLANG)" || { echo "le fuzzing demande clang (sudo apt install clang)"; exit 1; }
+	@mkdir -p $(dir $@)
+	$(CLANG) $(FUZZ_FLAGS) -Icserver/include -Icserver/src $< $(CS_SRC) \
+		$(CS_BUILD)/migrations.c $(CS_BUILD)/templates.c -o $@ $(LDLIBS)
+
+.PHONY: fuzz

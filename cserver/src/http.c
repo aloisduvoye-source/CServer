@@ -102,6 +102,53 @@ static ssize_t read_before(int fd, char *buf, size_t size, double deadline){
 	return n;
 }
 
+// analyse les en-têtes (head : terminés par '\0', sans la ligne vide finale) et
+// prépare le corps. Partagé par http_parse (socket) et http_parse_buffer (fuzzing) :
+// le fuzzer teste exactement le code que le serveur utilise.
+// Renvoie 0, ou le code HTTP d'erreur ; *length : la taille annoncée du corps.
+static int parse_head(char *head, cs_request *req, long *length){
+	// la ligne de requête : "GET /chemin?query HTTP/1.1"
+	char target[1024];
+	if (sscanf(head, "%7s %1023s", req->method, target) != 2){
+		return 400;
+	}
+
+	// "/chemin?query" -> path = "/chemin", query = "query"
+	char *q = strchr(target, '?');
+	if (q != NULL){
+		*q = '\0';
+		if (strlen(q+1) >= sizeof(req->query)){return 400;}
+		strcpy(req->query, q+1);
+	}
+
+	// dans un chemin, '+' reste un '+' (seule la query l'utilise pour l'espace)
+	if (cs_url_decode(target, strlen(target), req->path, sizeof(req->path), 0) < 0){
+		return 400;
+	}
+
+	// le cookie : trop long, on l'ignore plutôt que de refuser la requête
+	// (sur localhost, le navigateur envoie aussi les cookies des autres projets)
+	const char *cookie = find_header(head, "Cookie");
+	if (cookie != NULL){
+		size_t len = strcspn(cookie, "\r");
+		if (len < sizeof(req->cookie)){
+			memcpy(req->cookie, cookie, len);
+			req->cookie[len] = '\0';
+		}
+	}
+
+	// le corps : Content-Length dit exactement combien d'octets lire
+	*length = parse_content_length(head);
+	if (*length < 0){return 400;}
+	if (*length > MAX_BODY){return 413;}
+
+	req->body = malloc(*length + 1);
+	if (req->body == NULL){return 500;}
+	req->body[*length] = '\0';
+	req->body_len = *length;
+	return 0;
+}
+
 int http_parse(int client, cs_request *req, int timeout){
 	memset(req, 0, sizeof(*req));
 	double deadline = now_seconds() + timeout;
@@ -127,45 +174,12 @@ int http_parse(int client, cs_request *req, int timeout){
 	size_t head_len = (end - head) + 4;
 	*end = '\0';  // les en-têtes deviennent une chaîne à part
 
-	// 2. la ligne de requête : "GET /chemin?query HTTP/1.1"
-	char target[1024];
-	if (sscanf(head, "%7s %1023s", req->method, target) != 2){
-		return 400;
-	}
+	// 2. les en-têtes
+	long length;
+	int status = parse_head(head, req, &length);
+	if (status != 0){return status;}
 
-	// "/chemin?query" -> path = "/chemin", query = "query"
-	char *q = strchr(target, '?');
-	if (q != NULL){
-		*q = '\0';
-		if (strlen(q+1) >= sizeof(req->query)){return 400;}
-		strcpy(req->query, q+1);
-	}
-
-	// dans un chemin, '+' reste un '+' (seule la query l'utilise pour l'espace)
-	if (cs_url_decode(target, strlen(target), req->path, sizeof(req->path), 0) < 0){
-		return 400;
-	}
-
-	// 3. le cookie : trop long, on l'ignore plutôt que de refuser la requête
-	//    (sur localhost, le navigateur envoie aussi les cookies des autres projets)
-	const char *cookie = find_header(head, "Cookie");
-	if (cookie != NULL){
-		size_t len = strcspn(cookie, "\r");
-		if (len < sizeof(req->cookie)){
-			memcpy(req->cookie, cookie, len);
-			req->cookie[len] = '\0';
-		}
-	}
-
-	// 4. le corps : Content-Length dit exactement combien d'octets lire
-	long length = parse_content_length(head);
-	if (length < 0){return 400;}
-	if (length > MAX_BODY){return 413;}
-
-	req->body = malloc(length + 1);
-	if (req->body == NULL){return 500;}
-
-	// le début du corps est peut-être déjà arrivé avec les en-têtes
+	// 3. le corps : le début est peut-être déjà arrivé avec les en-têtes
 	size_t got = used - head_len;
 	if (got > (size_t)length){got = length;}
 	memcpy(req->body, head + head_len, got);
@@ -180,9 +194,31 @@ int http_parse(int client, cs_request *req, int timeout){
 		}
 		got += n;
 	}
-	req->body[length] = '\0';
-	req->body_len = length;
+	return 0;
+}
 
+int http_parse_buffer(const char *data, size_t size, cs_request *req){
+	memset(req, 0, sizeof(*req));
+
+	// les en-têtes, copiés pour être terminés par '\0' (comme ceux lus sur la socket)
+	char head[MAX_HEADER];
+	size_t used = size < sizeof(head) - 1 ? size : sizeof(head) - 1;
+	memcpy(head, data, used);
+	head[used] = '\0';
+	char *end = strstr(head, "\r\n\r\n");
+	if (end == NULL){
+		return used == sizeof(head) - 1 ? 431 : 400;   // trop longs, ou incomplets
+	}
+	size_t head_len = (end - head) + 4;
+	*end = '\0';
+
+	long length;
+	int status = parse_head(head, req, &length);
+	if (status != 0){return status;}
+
+	// le corps doit être là en entier
+	if (size - head_len < (size_t)length){return 400;}
+	memcpy(req->body, data + head_len, length);
 	return 0;
 }
 

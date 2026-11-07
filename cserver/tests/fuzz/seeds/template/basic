@@ -1,0 +1,2 @@
+<p>{{title}} {{{html}}} {{n}}</p>
+{{#plein}}oui{{/plein}}{{^vide}}vide{{/vide}}

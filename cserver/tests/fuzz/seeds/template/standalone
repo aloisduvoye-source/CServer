@@ -1,0 +1,4 @@
+  {{#plein}}
+<p>{{! commentaire }}{{ site_name }}</p>
+  {{/plein}}
+{{^user}}<a href="{{login_path}}">x</a>{{/user}}

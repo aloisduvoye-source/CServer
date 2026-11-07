@@ -59,6 +59,9 @@ int cs_utf8_valid(const char *s){
 }
 
 int cs_params_get(const char *query, const char *key, char *out, size_t out_size){
+	// même "?debug" (sans valeur) écrit un '\0' : il faut au moins un octet
+	// (trouvé par le fuzzing : out[0] était écrit sans vérifier out_size)
+	if (out_size == 0){return -1;}
 	const char *p = query;
 
 	while (*p != '\0'){

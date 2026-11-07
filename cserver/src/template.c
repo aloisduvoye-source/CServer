@@ -291,6 +291,10 @@ static int render_range(cs_ctx *c, cs_buf *out, const char *text, const char *p,
 	return 0;
 }
 
+int template_render_text(cs_ctx *c, cs_buf *out, const char *text, size_t len, const cs_vars *v){
+	return render_range(c, out, text, text, text + len, v, "(texte)");
+}
+
 int cs_render(cs_ctx *c, cs_buf *out, const char *tpl, const cs_vars *v){
 	const char *text = load_template(tpl);
 	if (text == NULL){return -1;}

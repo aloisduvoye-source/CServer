@@ -15,6 +15,8 @@ extern cs_app cs_config;
 // lit et analyse la requête (en-têtes + corps), qui doit arriver en `timeout` secondes
 // renvoie 0 si OK, -1 si rien reçu, sinon le code HTTP d'erreur à renvoyer (400, 408, 413...)
 int  http_parse(int client, cs_request *req, int timeout);
+// la même analyse, sur une requête complète déjà en mémoire (utilisée par le fuzzing)
+int  http_parse_buffer(const char *data, size_t size, cs_request *req);
 void http_free(cs_request *req);
 
 int  http_cookie_get(const cs_request *req, const char *name, char *out, size_t out_size);
@@ -54,6 +56,9 @@ typedef struct {
 extern const embedded_file framework_templates[];
 
 void buf_append_n(cs_buf *b, const char *s, size_t n);   // n octets de s, tels quels
+
+// rend un modèle donné directement sous forme de texte (utilisé par le fuzzing)
+int template_render_text(cs_ctx *c, cs_buf *out, const char *text, size_t len, const cs_vars *v);
 
 // comptes : 0 si le nom est pris, l'id sinon, -1 si erreur
 long db_user_create(sqlite3 *db, const char *name, const char *password_hash);
