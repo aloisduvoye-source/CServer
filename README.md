@@ -30,29 +30,3 @@ git pull cserver main                 # plus tard : une nouvelle version de cser
 ```
 
 Tes fichiers (`main.c`, `templates/`...) ne sont pas ceux du framework (`cserver/`, `examples/`) : les mises à jour ne les touchent pas.
-
-## Plan
-
-Objectif : un livre d'or (formulaire + liste des messages).
-
-- [x] Fichiers statiques
-- [x] Plusieurs clients en parallèle (`fork`)
-- [x] Routes dynamiques
-- [x] Paramètres d'URL (`?q=...`, décodage `%XX`)
-- [x] Requêtes POST (lecture selon `Content-Length`)
-- [x] Base de données SQLite
-- [x] Échappement HTML (XSS)
-- [x] Livre d'or (enregistrer et afficher les messages)
-- [x] API JSON
-- [x] Sessions et cookies
-
-## Framework
-
-Objectif : réutiliser `cserver/` pour d'autres sites, sans y toucher.
-
-- [x] Séparer le framework et le site
-- [x] Configuration et `cs_run()`
-- [x] Contexte `cs_ctx` passé aux handlers
-- [x] Migrations par nom
-- [x] Modèles HTML
-- [x] Un deuxième site d'exemple
