@@ -1,6 +1,6 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra -g
-LDLIBS = -lsqlite3
+LDLIBS = -lsqlite3 -lcrypt
 SRC    = $(wildcard src/*.c)
 
 server: $(SRC) $(wildcard src/*.h)

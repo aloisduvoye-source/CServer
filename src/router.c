@@ -6,6 +6,7 @@
 #include"util.h"
 #include"db.h"
 #include"guestbook.h"
+#include"auth.h"
 
 typedef void (*Handler)(int client, Request *req);
 
@@ -87,10 +88,16 @@ static Route routes[] = {
 	{ "GET",  "/api/bonjour", api_bonjour },
 	{ "POST", "/api/bonjour", api_bonjour },
 	{ "GET",  "/bonjour",     page_bonjour },
-	{ "GET",  "/guestbook",    guestbook_list },
-	{ "POST", "/guestbook",    guestbook_post },
-	{ "GET",  "/api/messages", api_messages_list },
-	{ "POST", "/api/messages", api_messages_post },
+	{ "GET",  "/guestbook",        guestbook_list },
+	{ "POST", "/guestbook",        guestbook_post },
+	{ "POST", "/guestbook/delete", guestbook_delete },
+	{ "GET",  "/api/messages",     api_messages_list },
+	{ "POST", "/api/messages",     api_messages_post },
+	{ "GET",  "/signup",           auth_signup_page },
+	{ "POST", "/signup",           auth_signup },
+	{ "GET",  "/login",            auth_login_page },
+	{ "POST", "/login",            auth_login },
+	{ "POST", "/logout",           auth_logout },
 };
 
 void route(int client, Request *req){

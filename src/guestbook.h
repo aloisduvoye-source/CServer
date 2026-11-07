@@ -5,7 +5,8 @@
 
 // version HTML (fonctionne sans JavaScript)
 void guestbook_list(int client, Request *req);      // GET  /guestbook
-void guestbook_post(int client, Request *req);      // POST /guestbook -> 303
+void guestbook_post(int client, Request *req);      // POST /guestbook -> 303 (connecté)
+void guestbook_delete(int client, Request *req);    // POST /guestbook/delete id=N -> 303 ou 403
 
 // version JSON (utilisée par www/guestbook.js)
 void api_messages_list(int client, Request *req);   // GET  /api/messages -> 200 [...]

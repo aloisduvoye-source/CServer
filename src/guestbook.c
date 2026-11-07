@@ -1,17 +1,19 @@
 #include<stdio.h>
+#include<string.h>
 #include<ctype.h>
 #include"guestbook.h"
+#include"auth.h"
 #include"buffer.h"
 #include"db.h"
+#include"page.h"
 #include"util.h"
 
-// le formulaire limite en CARACTÈRES (maxlength="50" et "1000" dans PAGE_START),
+// le formulaire limite en CARACTÈRES (maxlength="1000"),
 // le serveur limite en OCTETS : en UTF-8 un caractère prend jusqu'à 4 octets
-#define NAME_BYTES    (50 * 4)
 #define MESSAGE_BYTES (1000 * 4)
 #define LIST_LIMIT    100
 
-/* ------------------------------------------------------------------ formulaire */
+/* ------------------------------------------------------------------ outils */
 
 static int is_blank(const char *s){
 	for (; *s != '\0'; s++){
@@ -20,99 +22,131 @@ static int is_blank(const char *s){
 	return 1;
 }
 
-// lit et vérifie le formulaire (name[NAME_BYTES+1], message[MESSAGE_BYTES+1])
+// lit et vérifie le champ message (buffer de MESSAGE_BYTES + 1)
 // renvoie NULL si tout va bien, sinon le message d'erreur
-static const char *read_form(Request *req, char *name, char *message){
+static const char *read_message(Request *req, char *message){
 	// query_get échoue aussi si la valeur ne tient pas dans le buffer (trop longue)
-	if (query_get(req->body, "name", name, NAME_BYTES + 1) < 0 || is_blank(name)){
-		return "name is required (max 50 characters)";
-	}
 	if (query_get(req->body, "message", message, MESSAGE_BYTES + 1) < 0 || is_blank(message)){
 		return "message is required (max 1000 characters)";
 	}
-	if (!utf8_valid(name) || !utf8_valid(message)){
+	if (!utf8_valid(message)){
 		return "invalid UTF-8";
 	}
 	return NULL;
 }
 
+// "42" -> 42 ; -1 si ce n'est pas un nombre positif
+static long parse_id(const char *s){
+	size_t n = strlen(s);
+	if (n == 0 || n > 18){return -1;}
+	long id = 0;
+	for (; *s != '\0'; s++){
+		if (!isdigit((unsigned char)*s)){return -1;}
+		id = id * 10 + (*s - '0');
+	}
+	return id;
+}
+
+// contexte passé aux fonctions appelées pour chaque message
+typedef struct {
+	Buffer *buf;
+	long    user_id;   // utilisateur connecté (0 si personne) : ses messages sont "à lui"
+	int     count;     // JSON : pour savoir s'il faut une virgule
+} MessageCtx;
+
 /* ------------------------------------------------------------------ version HTML */
 
-static const char *PAGE_START =
-	"<!DOCTYPE html>\n"
-	"<html lang=\"en\">\n"
-	"<head>\n"
-	"    <meta charset=\"UTF-8\">\n"
-	"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-	"    <title>guestbook · cServer</title>\n"
-	"    <link rel=\"stylesheet\" href=\"/style.css\">\n"
-	"    <script src=\"/guestbook.js\" defer></script>\n"
-	"</head>\n"
-	"<body>\n"
-	"    <nav><a href=\"/\">home</a> <a href=\"/about.html\">about</a> <a href=\"/guestbook\">guestbook</a></nav>\n"
-	"    <h1>guestbook</h1>\n"
+static const char *FORM =
 	"    <form id=\"guestbook-form\" method=\"post\" action=\"/guestbook\">\n"
-	"        <p><input name=\"name\" placeholder=\"name\" maxlength=\"50\" required></p>\n"
 	"        <p><textarea name=\"message\" placeholder=\"message\" maxlength=\"1000\" rows=\"4\" required></textarea></p>\n"
 	"        <p><button>send</button> <span id=\"error\" class=\"error\"></span></p>\n"
-	"    </form>\n"
-	"    <section id=\"messages\">\n";
+	"    </form>\n";
 
-static const char *PAGE_END =
-	"    </section>\n"
-	"</body>\n"
-	"</html>\n";
+static const char *LOGIN_INVITE =
+	"    <p><a href=\"/login\">log in</a> or <a href=\"/signup\">sign up</a> to leave a message.</p>\n";
 
 // même structure HTML que render() dans www/guestbook.js
-static void append_message_html(void *ctx, long id, const char *name, const char *message, const char *date){
-	(void)id;
-	Buffer *page = ctx;
-	buf_append(page, "    <article>\n        <p class=\"meta\"><strong>");
-	buf_append_html(page, name);
-	buf_append(page, "</strong> · ");
-	buf_append_html(page, date);
-	buf_append(page, "</p>\n        <p class=\"text\">");
-	buf_append_html(page, message);
-	buf_append(page, "</p>\n    </article>\n");
+static void append_message_html(void *ctx, long id, long author_id,
+                                const char *name, const char *message, const char *date){
+	MessageCtx *c = ctx;
+	buf_append(c->buf, "    <article>\n        <p class=\"meta\"><strong>");
+	buf_append_html(c->buf, name);
+	buf_append(c->buf, "</strong> · ");
+	buf_append_html(c->buf, date);
+
+	if (c->user_id != 0 && author_id == c->user_id){
+		char num[32];
+		snprintf(num, sizeof(num), "%ld", id);
+		buf_append(c->buf,
+			" <form class=\"inline\" method=\"post\" action=\"/guestbook/delete\">"
+			"<input type=\"hidden\" name=\"id\" value=\"");
+		buf_append(c->buf, num);
+		buf_append(c->buf, "\"><button class=\"link\">delete</button></form>");
+	}
+
+	buf_append(c->buf, "</p>\n        <p class=\"text\">");
+	buf_append_html(c->buf, message);
+	buf_append(c->buf, "</p>\n    </article>\n");
 }
 
 void guestbook_list(int client, Request *req){
-	(void)req;
 	sqlite3 *db = db_open();
 	if (db == NULL){
 		send_error(client, 500);
 		return;
 	}
 
+	User user;
+	int logged = auth_current_user(db, req, &user);
+
 	Buffer page;
 	buf_init(&page);
-	buf_append(&page, PAGE_START);
-	int count = db_messages_each(db, LIST_LIMIT, append_message_html, &page);
+	page_begin(&page, "guestbook", logged ? &user : NULL, "/guestbook.js");
+	buf_append(&page, "    <h1>guestbook</h1>\n");
+	buf_append(&page, logged ? FORM : LOGIN_INVITE);
+	buf_append(&page, "    <section id=\"messages\">\n");
+
+	MessageCtx ctx = { &page, logged ? user.id : 0, 0 };
+	int count = db_messages_each(db, LIST_LIMIT, append_message_html, &ctx);
 	if (count == 0){
 		buf_append(&page, "    <p>No messages yet. Be the first!</p>\n");
 	}
-	buf_append(&page, PAGE_END);
+
+	buf_append(&page, "    </section>\n");
+	page_end(&page);
 	sqlite3_close(db);
 
-	if (count < 0 || page.error){
+	if (count < 0){
+		buf_free(&page);
 		send_error(client, 500);
+		return;
 	}
-	else {
-		send_response(client, 200, "text/html; charset=utf-8", page.data, page.len);
-	}
-	buf_free(&page);
+	page_send(client, 200, &page);
 }
 
 void guestbook_post(int client, Request *req){
-	char name[NAME_BYTES + 1];
+	sqlite3 *db = db_open();
+	if (db == NULL){
+		send_error(client, 500);
+		return;
+	}
+
+	User user;
+	if (!auth_current_user(db, req, &user)){
+		sqlite3_close(db);
+		send_redirect(client, "/login", NULL);
+		return;
+	}
+
 	char message[MESSAGE_BYTES + 1];
-	if (read_form(req, name, message) != NULL){
+	if (read_message(req, message) != NULL){
+		sqlite3_close(db);
 		send_error(client, 400);
 		return;
 	}
 
-	sqlite3 *db = db_open();
-	int ok = (db != NULL) && db_message_add(db, name, message, NULL, NULL) == 0;
+	// le nom vient du compte, plus du formulaire : impossible de se faire passer pour un autre
+	int ok = db_message_add(db, user.id, user.name, message, NULL, NULL) == 0;
 	sqlite3_close(db);
 
 	if (!ok){
@@ -122,34 +156,60 @@ void guestbook_post(int client, Request *req){
 
 	// Post/Redirect/Get : le navigateur recharge la page en GET,
 	// donc F5 ne renvoie pas le formulaire une deuxième fois
-	send_redirect(client, "/guestbook");
+	send_redirect(client, "/guestbook", NULL);
+}
+
+void guestbook_delete(int client, Request *req){
+	sqlite3 *db = db_open();
+	if (db == NULL){
+		send_error(client, 500);
+		return;
+	}
+
+	User user;
+	if (!auth_current_user(db, req, &user)){
+		sqlite3_close(db);
+		send_redirect(client, "/login", NULL);
+		return;
+	}
+
+	char id_text[32];
+	long id = query_get(req->body, "id", id_text, sizeof(id_text)) == 0 ? parse_id(id_text) : -1;
+	int deleted = id > 0 ? db_message_delete(db, id, user.id) : 0;
+	sqlite3_close(db);
+
+	if (deleted < 0){
+		send_error(client, 500);
+	}
+	else if (deleted == 0){
+		send_error(client, 403);   // n'existe pas, ou appartient à quelqu'un d'autre
+	}
+	else {
+		send_redirect(client, "/guestbook", NULL);
+	}
 }
 
 /* ------------------------------------------------------------------ version JSON */
 
-typedef struct {
-	Buffer *buf;
-	int     count;   // pour savoir s'il faut une virgule avant l'objet suivant
-} JsonList;
-
-// {"id":1,"name":"Jean","message":"Salut","date":"2026-11-07 17:50"}
-static void append_message_json(void *ctx, long id, const char *name, const char *message, const char *date){
-	JsonList *list = ctx;
+// {"id":1,"name":"jean","message":"Salut","date":"2026-11-07 17:50","mine":true}
+static void append_message_json(void *ctx, long id, long author_id,
+                                const char *name, const char *message, const char *date){
+	MessageCtx *c = ctx;
 	char num[32];
 	snprintf(num, sizeof(num), "%ld", id);
 
-	if (list->count++ > 0){
-		buf_append(list->buf, ",");
+	if (c->count++ > 0){
+		buf_append(c->buf, ",");
 	}
-	buf_append(list->buf, "{\"id\":");
-	buf_append(list->buf, num);
-	buf_append(list->buf, ",\"name\":");
-	buf_append_json(list->buf, name);
-	buf_append(list->buf, ",\"message\":");
-	buf_append_json(list->buf, message);
-	buf_append(list->buf, ",\"date\":");
-	buf_append_json(list->buf, date);
-	buf_append(list->buf, "}");
+	buf_append(c->buf, "{\"id\":");
+	buf_append(c->buf, num);
+	buf_append(c->buf, ",\"name\":");
+	buf_append_json(c->buf, name);
+	buf_append(c->buf, ",\"message\":");
+	buf_append_json(c->buf, message);
+	buf_append(c->buf, ",\"date\":");
+	buf_append_json(c->buf, date);
+	buf_append(c->buf, (c->user_id != 0 && author_id == c->user_id) ? ",\"mine\":true}" : ",\"mine\":false}");
 }
 
 // {"error":"..."}
@@ -170,18 +230,20 @@ static void send_json_error(int client, int status, const char *error){
 }
 
 void api_messages_list(int client, Request *req){
-	(void)req;
 	sqlite3 *db = db_open();
 	if (db == NULL){
 		send_json_error(client, 500, "database unavailable");
 		return;
 	}
 
+	User user;
+	int logged = auth_current_user(db, req, &user);
+
 	Buffer json;
 	buf_init(&json);
-	JsonList list = { &json, 0 };
+	MessageCtx ctx = { &json, logged ? user.id : 0, 0 };
 	buf_append(&json, "[");
-	int count = db_messages_each(db, LIST_LIMIT, append_message_json, &list);
+	int count = db_messages_each(db, LIST_LIMIT, append_message_json, &ctx);
 	buf_append(&json, "]\n");
 	sqlite3_close(db);
 
@@ -195,10 +257,23 @@ void api_messages_list(int client, Request *req){
 }
 
 void api_messages_post(int client, Request *req){
-	char name[NAME_BYTES + 1];
+	sqlite3 *db = db_open();
+	if (db == NULL){
+		send_json_error(client, 500, "database unavailable");
+		return;
+	}
+
+	User user;
+	if (!auth_current_user(db, req, &user)){
+		sqlite3_close(db);
+		send_json_error(client, 401, "login required");
+		return;
+	}
+
 	char message[MESSAGE_BYTES + 1];
-	const char *error = read_form(req, name, message);
+	const char *error = read_message(req, message);
 	if (error != NULL){
+		sqlite3_close(db);
 		send_json_error(client, 400, error);
 		return;
 	}
@@ -206,10 +281,8 @@ void api_messages_post(int client, Request *req){
 	// la réponse contient le message créé, tel que la base l'a enregistré
 	Buffer json;
 	buf_init(&json);
-	JsonList list = { &json, 0 };
-
-	sqlite3 *db = db_open();
-	int ok = (db != NULL) && db_message_add(db, name, message, append_message_json, &list) == 0;
+	MessageCtx ctx = { &json, user.id, 0 };
+	int ok = db_message_add(db, user.id, user.name, message, append_message_json, &ctx) == 0;
 	sqlite3_close(db);
 	buf_append(&json, "\n");
 

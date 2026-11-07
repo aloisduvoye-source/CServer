@@ -16,9 +16,13 @@ static const char *status_text(int status){
 		case 201: return "Created";
 		case 303: return "See Other";
 		case 400: return "Bad Request";
+		case 401: return "Unauthorized";
+		case 403: return "Forbidden";
 		case 404: return "Not Found";
 		case 405: return "Method Not Allowed";
+		case 409: return "Conflict";
 		case 413: return "Payload Too Large";
+		case 429: return "Too Many Requests";
 		case 431: return "Request Header Fields Too Large";
 		case 500: return "Internal Server Error";
 		default:  return "Unknown";
@@ -51,6 +55,21 @@ static long parse_content_length(const char *head){
 	}
 
 	return length;
+}
+
+// cherche l'en-tête `name` (ex : "Cookie") ; renvoie un pointeur sur sa valeur,
+// qui s'arrête au "\r\n" suivant (ou au '\0'), ou NULL s'il est absent
+static const char *find_header(const char *head, const char *name){
+	size_t n = strlen(name);
+	for (const char *line = strstr(head, "\r\n"); line != NULL; line = strstr(line, "\r\n")){
+		line += 2;
+		if (strncasecmp(line, name, n) == 0 && line[n] == ':'){
+			const char *value = line + n + 1;
+			while (*value == ' ' || *value == '\t'){value++;}
+			return value;
+		}
+	}
+	return NULL;
 }
 
 int http_parse(int client, Request *req){
@@ -93,7 +112,18 @@ int http_parse(int client, Request *req){
 		return 400;
 	}
 
-	// 3. le corps : Content-Length dit exactement combien d'octets lire
+	// 3. le cookie : trop long, on l'ignore plutôt que de refuser la requête
+	//    (sur localhost, le navigateur envoie aussi les cookies des autres projets)
+	const char *cookie = find_header(head, "Cookie");
+	if (cookie != NULL){
+		size_t len = strcspn(cookie, "\r");
+		if (len < sizeof(req->cookie)){
+			memcpy(req->cookie, cookie, len);
+			req->cookie[len] = '\0';
+		}
+	}
+
+	// 4. le corps : Content-Length dit exactement combien d'octets lire
 	long length = parse_content_length(head);
 	if (length < 0){return 400;}
 	if (length > MAX_BODY){return 413;}
@@ -122,6 +152,32 @@ int http_parse(int client, Request *req){
 void http_free(Request *req){
 	free(req->body);
 	req->body = NULL;
+}
+
+// "a=1; cserver_session=f3a9...; b=2" : les paires sont séparées par des ';'
+int cookie_get(const Request *req, const char *name, char *out, size_t out_size){
+	size_t n = strlen(name);
+	const char *p = req->cookie;
+
+	while (*p != '\0'){
+		while (*p == ' ' || *p == ';'){p++;}
+		const char *end = strchr(p, ';');
+		if (end == NULL){end = p + strlen(p);}
+
+		if ((size_t)(end - p) > n && strncmp(p, name, n) == 0 && p[n] == '='){
+			const char *value = p + n + 1;
+			size_t len = end - value;
+			while (len > 0 && value[len-1] == ' '){len--;}
+			if (len >= out_size){return -1;}
+			memcpy(out, value, len);
+			out[len] = '\0';
+			return 0;
+		}
+
+		p = end;
+	}
+
+	return -1;
 }
 
 // write() peut écrire moins que demandé : on boucle jusqu'au bout
@@ -160,17 +216,22 @@ void send_error(int client, int status){
 	send_response(client, status, "text/html", body, len);
 }
 
-// `location` doit venir de NOTRE code : un "\r\n" venu d'un utilisateur
-// permettrait d'injecter de faux en-têtes dans la réponse
-void send_redirect(int client, const char *location){
-	char header[512];
+// `location` et `extra_headers` doivent venir de NOTRE code : un "\r\n" venu
+// d'un utilisateur permettrait d'injecter de faux en-têtes dans la réponse
+void send_redirect(int client, const char *location, const char *extra_headers){
+	char header[1024];
 	int n = snprintf(header, sizeof(header),
 		"HTTP/1.0 303 See Other\r\n"
 		"Location: %s\r\n"
+		"%s"
 		"Content-Length: 0\r\n"
 		"\r\n",
-		location
+		location, extra_headers != NULL ? extra_headers : ""
 	);
+	if (n < 0 || (size_t)n >= sizeof(header)){
+		send_error(client, 500);
+		return;
+	}
 	write_all(client, header, n);
 }
 

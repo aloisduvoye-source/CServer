@@ -11,8 +11,8 @@ body {
 
 a { color: #e5e5e5; }
 
-nav { margin-bottom: 2rem; }
-nav a { margin-right: 1rem; }
+nav { display: flex; flex-wrap: wrap; gap: 1rem; align-items: baseline; margin-bottom: 2rem; }
+nav .user { margin-left: auto; display: flex; gap: 1rem; align-items: baseline; }
 
 /* formulaires */
 input, textarea, button {
@@ -26,6 +26,10 @@ textarea { width: 100%; box-sizing: border-box; }
 button { cursor: pointer; }
 button:disabled { opacity: .5; cursor: wait; }
 .error { color: #f66; }
+
+/* bouton d'un formulaire POST qui ressemble à un lien (log out, delete) */
+form.inline { display: inline; }
+button.link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; }
 
 /* livre d'or */
 article { border-top: 1px solid #333; padding: .5rem 0; }
