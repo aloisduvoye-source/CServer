@@ -6,6 +6,8 @@
 #include<unistd.h>
 #include<sys/stat.h>
 #include<fcntl.h>
+#include<signal.h>
+#include<sys/time.h>
 
 char* content_type(char* filename){
 	char *dot = strrchr(filename, '.');
@@ -20,6 +22,76 @@ char* content_type(char* filename){
 	if (strcmp(dot, ".ico") == 0){return "image/x-icon";}
 
 	return "text/plain";
+}
+
+void send_404(int client){
+	char *response=
+		"HTTP/1.0 404 not found\r\n"
+		"Content-Type: text/html\r\n"
+		"\r\n"
+		"<h1>404 dumbass</h1>\n";
+	write(client, response, strlen(response));
+}
+
+void handle_client(int client){
+
+	// si le client n'envoie rien pendant 5 s, read() renvoie -1
+	struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+	setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+	char request[4096];
+	ssize_t n = read(client, request, sizeof(request)-1);
+	if (n<=0){
+		return;
+	}
+
+	request[n] = '\0';
+
+	char method[8], path[256];
+	if (sscanf(request, "%7s %255s", method, path) != 2){
+		return;
+	}
+
+	printf("[pid %d] %s %s\n", getpid(), method, path);
+
+	if (strstr(path, ".." )!= NULL){
+		send_404(client);
+		return;
+	}
+
+	char filename[512];
+	snprintf(
+			filename,
+			sizeof(filename),
+			"www%s",
+			strcmp(path, "/") == 0 ? "/index.html" : path
+	);
+
+	struct stat info;
+	int file = -1;
+
+	if (stat(filename,&info) < 0 || !S_ISREG(info.st_mode) || (file  = open(filename, O_RDONLY)) < 0) {
+		send_404(client);
+		return;
+	}
+
+	char header[256];
+	int lenght = snprintf(header, sizeof(header),
+		"HTTP/1.0 200 OK\r\n"
+		"Content-Type: %s\r\n"
+		"Content-Length: %ld\r\n"
+		"\r\n",
+		content_type(filename), (long)info.st_size
+	);
+	write(client, header, lenght);
+
+	char buffer[4096];
+	ssize_t count;
+	while ((count = read(file, buffer, sizeof(buffer))) > 0){
+		write(client, buffer, count);
+	}
+
+	close(file);
 }
 
 
@@ -51,84 +123,33 @@ int main(void){
 		exit(1);
 	}
 
+	signal(SIGCHLD, SIG_IGN);
+
 	printf("listening on 8080\n");
 
 	while (1) {
 		int client = accept(server, NULL, NULL);
 		if (client<0){
-			perror("client");
-			exit(1);
+			perror("accept");
+			continue;
 		}
-		printf("client fd %d\n", client);
 
-		char request[4096];
-		ssize_t n = read(client, request, sizeof(request)-1);
-		if (n<=0){
+		fflush(stdout);
+		pid_t pid = fork();
+		if (pid < 0){
+			perror("fork");
 			close(client);
 			continue;
 		}
 
-		request[n] = '\0';
-
-		char method[8], path[256];
-		if (sscanf(request, "%7s %255s", method, path) != 2){
-			close (client);
-			continue;
-		}
-
-		printf("%s %s\n", method, path);
-		if (strstr(path, ".." )!= NULL){
-			char *response=
-				"HTTP/1.0 404 not found\r\n"
-				"Content-Type: text/html\r\n"
-				"\r\n"
-				"<h1>404 dumbass</h1>\n";
-			write(client, response, strlen(response));
+		if (pid == 0){
+			close(server);
+			handle_client(client);
 			close(client);
-			continue;
+			exit(0);
 		}
 
-		char filename[512];
-		snprintf(
-				filename,
-				sizeof(filename),
-				"www%s",
-				strcmp(path, "/") == 0 ? "/index.html" : path
-		);
-
-		struct stat info;
-		int file = -1;
-
-		if (stat(filename,&info) < 0 || !S_ISREG(info.st_mode) || (file  = open(filename, O_RDONLY)) < 0) {
-			char *response=
-				"HTTP/1.0 404 not found\r\n"
-				"Content-Type: text/html\r\n"
-				"\r\n"
-				"<h1>404 dumbass</h1>\n";
-			write(client, response, strlen(response));
-			close(client);
-			continue;
-		}
-
-		char header[256];
-		int lenght = snprintf(header, sizeof(header),
-			"HTTP/1.0 200 OK\r\n"
-			"Content-Type: %s\r\n"
-			"Content-Length: %ld\r\n"
-			"\r\n",
-			content_type(filename), (long)info.st_size
-		);
-		write(client, header, lenght);
-
-		char buffer[4096];
-		ssize_t count;
-		while ((count = read(file, buffer, sizeof(buffer))) > 0){
-			write(client, buffer, count);
-		}
-
-		close(file);
 		close(client);
-
 	}
 
 	return 0;
