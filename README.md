@@ -38,6 +38,6 @@ Objectif : réutiliser `cserver/` pour d'autres sites, sans y toucher.
 - [x] Séparer le framework et le site
 - [x] Configuration et `cs_run()`
 - [x] Contexte `cs_ctx` passé aux handlers
-- [ ] Migrations par nom
+- [x] Migrations par nom
 - [ ] Modèles HTML
 - [ ] Un deuxième site d'exemple

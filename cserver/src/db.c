@@ -64,40 +64,50 @@ sqlite3 *db_open(void){
 	return db;
 }
 
-/* ---------------------------------------------------------------- schéma */
+/* ---------------------------------------------------------------- migrations */
 
-static const char *SCHEMA =
-	// WAL : les lectures ne sont pas bloquées pendant une écriture
-	"PRAGMA journal_mode = WAL;"
-	"CREATE TABLE IF NOT EXISTS messages ("
-	"  id         INTEGER PRIMARY KEY,"
-	"  name       TEXT NOT NULL,"
-	"  message    TEXT NOT NULL,"
-	"  created_at TEXT NOT NULL DEFAULT (datetime('now'))"   // en UTC
-	");"
-	"CREATE TABLE IF NOT EXISTS users ("
-	"  id            INTEGER PRIMARY KEY,"
-	"  name          TEXT NOT NULL UNIQUE COLLATE NOCASE,"   // "Jean" et "jean" : même nom
-	"  password_hash TEXT NOT NULL,"
-	"  created_at    TEXT NOT NULL DEFAULT (datetime('now'))"
-	");"
-	"CREATE TABLE IF NOT EXISTS sessions ("
-	"  token      TEXT PRIMARY KEY,"
-	"  user_id    INTEGER NOT NULL REFERENCES users(id),"
-	"  expires_at INTEGER NOT NULL"                          // timestamp Unix
-	");"
-	"CREATE TABLE IF NOT EXISTS login_failures ("
-	"  ip TEXT NOT NULL,"
-	"  at INTEGER NOT NULL"
-	");"
-	"CREATE INDEX IF NOT EXISTS login_failures_ip ON login_failures (ip, at);";
+// les tables du framework sont dans cserver/migrations/*.sql ; le Makefile les
+// transforme en tableau C (framework_migrations, déclaré dans internal.h)
 
-static int user_version(sqlite3 *db){
-	sqlite3_stmt *stmt = cs_db_prepare(db, "PRAGMA user_version;");
+static int is_applied(sqlite3 *db, const char *source, const char *name){
+	sqlite3_stmt *stmt = cs_db_prepare(db, "SELECT 1 FROM cs_migrations WHERE source = ? AND name = ?;");
 	if (stmt == NULL){return -1;}
-	int version = (sqlite3_step(stmt) == SQLITE_ROW) ? sqlite3_column_int(stmt, 0) : -1;
+	sqlite3_bind_text(stmt, 1, source, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, name, -1, SQLITE_STATIC);
+
+	int rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
-	return version;
+	if (rc == SQLITE_ROW){return 1;}
+	return rc == SQLITE_DONE ? 0 : -1;
+}
+
+static int mark_applied(sqlite3 *db, const char *source, const char *name){
+	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO cs_migrations (source, name) VALUES (?, ?);");
+	if (stmt == NULL){return -1;}
+	sqlite3_bind_text(stmt, 1, source, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, name, -1, SQLITE_STATIC);
+	return cs_db_run(db, stmt);
+}
+
+// applique, dans l'ordre, les migrations de `list` qui ne l'ont pas encore été
+static int apply_migrations(sqlite3 *db, const char *source, const cs_migration *list){
+	for (const cs_migration *m = list; m->name != NULL; m++){
+		int applied = is_applied(db, source, m->name);
+		if (applied < 0){return -1;}
+		if (applied){continue;}
+
+		// tout ou rien : si une requête échoue, la base revient à l'état d'avant
+		if (exec(db, "BEGIN;") < 0){return -1;}
+		if (exec(db, m->sql) < 0 || mark_applied(db, source, m->name) < 0){
+			exec(db, "ROLLBACK;");
+			fprintf(stderr, "migration %s/%s : échec, rien n'a été modifié\n", source, m->name);
+			return -1;
+		}
+		if (exec(db, "COMMIT;") < 0){return -1;}
+
+		printf("migration appliquée : %s/%s\n", source, m->name);
+	}
+	return 0;
 }
 
 int db_init(void){
@@ -106,19 +116,20 @@ int db_init(void){
 	sqlite3 *db = db_open();
 	if (db == NULL){return -1;}
 
-	int ok = exec(db, SCHEMA) == 0;
+	int ok = exec(db,
+		// WAL : les lectures ne sont pas bloquées pendant une écriture
+		"PRAGMA journal_mode = WAL;"
+		// la liste des migrations déjà appliquées, du framework et du site
+		"CREATE TABLE IF NOT EXISTS cs_migrations ("
+		"  source     TEXT NOT NULL,"                          // "cserver" ou "site"
+		"  name       TEXT NOT NULL,"
+		"  applied_at TEXT NOT NULL DEFAULT (datetime('now')),"
+		"  PRIMARY KEY (source, name)"
+		");") == 0;
 
-	// migrations : `PRAGMA user_version` (0 au départ) retient lesquelles ont déjà
-	// été appliquées, pour faire évoluer une base existante sans perdre ses données
-	int version = ok ? user_version(db) : -1;
-	if (version < 0){ok = 0;}
-
-	if (ok && version < 1){
-		// v1 : chaque message appartient à un utilisateur (NULL pour les anciens)
-		ok = exec(db,
-			"ALTER TABLE messages ADD COLUMN user_id INTEGER REFERENCES users(id);"
-			"PRAGMA user_version = 1;") == 0;
-	}
+	// d'abord le framework : les tables du site peuvent faire référence à cs_users
+	if (ok){ok = apply_migrations(db, "cserver", framework_migrations) == 0;}
+	if (ok && cs_config.migrations != NULL){ok = apply_migrations(db, "site", cs_config.migrations) == 0;}
 
 	sqlite3_close(db);
 	return ok ? 0 : -1;
@@ -127,7 +138,7 @@ int db_init(void){
 /* ---------------------------------------------------------------- comptes */
 
 long db_user_create(sqlite3 *db, const char *name, const char *password_hash){
-	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO users (name, password_hash) VALUES (?, ?);");
+	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO cs_users (name, password_hash) VALUES (?, ?);");
 	if (stmt == NULL){return -1;}
 	sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
 	sqlite3_bind_text(stmt, 2, password_hash, -1, SQLITE_STATIC);
@@ -149,7 +160,7 @@ long db_user_create(sqlite3 *db, const char *name, const char *password_hash){
 }
 
 int db_user_find(sqlite3 *db, const char *name, cs_user *user, char *hash, size_t hash_size){
-	sqlite3_stmt *stmt = cs_db_prepare(db, "SELECT id, name, password_hash FROM users WHERE name = ?;");
+	sqlite3_stmt *stmt = cs_db_prepare(db, "SELECT id, name, password_hash FROM cs_users WHERE name = ?;");
 	if (stmt == NULL){return -1;}
 	sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
 
@@ -173,10 +184,10 @@ int db_user_find(sqlite3 *db, const char *name, cs_user *user, char *hash, size_
 int db_session_create(sqlite3 *db, const char *token, long user_id, long expires_at){
 	// au passage, on fait le ménage dans les sessions expirées
 	sqlite3_stmt *clean = cs_db_prepare(db,
-		"DELETE FROM sessions WHERE expires_at <= CAST(strftime('%s', 'now') AS INTEGER);");
+		"DELETE FROM cs_sessions WHERE expires_at <= CAST(strftime('%s', 'now') AS INTEGER);");
 	if (clean != NULL){cs_db_run(db, clean);}
 
-	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?);");
+	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO cs_sessions (token, user_id, expires_at) VALUES (?, ?, ?);");
 	if (stmt == NULL){return -1;}
 	sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
 	sqlite3_bind_int64(stmt, 2, user_id);
@@ -186,9 +197,9 @@ int db_session_create(sqlite3 *db, const char *token, long user_id, long expires
 
 int db_session_user(sqlite3 *db, const char *token, long now, cs_user *user){
 	sqlite3_stmt *stmt = cs_db_prepare(db,
-		"SELECT users.id, users.name FROM sessions "
-		"JOIN users ON users.id = sessions.user_id "
-		"WHERE sessions.token = ? AND sessions.expires_at > ?;");
+		"SELECT cs_users.id, cs_users.name FROM cs_sessions "
+		"JOIN cs_users ON cs_users.id = cs_sessions.user_id "
+		"WHERE cs_sessions.token = ? AND cs_sessions.expires_at > ?;");
 	if (stmt == NULL){return -1;}
 	sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
 	sqlite3_bind_int64(stmt, 2, now);
@@ -210,14 +221,14 @@ int db_session_user(sqlite3 *db, const char *token, long now, cs_user *user){
 }
 
 void db_session_delete(sqlite3 *db, const char *token){
-	sqlite3_stmt *stmt = cs_db_prepare(db, "DELETE FROM sessions WHERE token = ?;");
+	sqlite3_stmt *stmt = cs_db_prepare(db, "DELETE FROM cs_sessions WHERE token = ?;");
 	if (stmt == NULL){return;}
 	sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
 	cs_db_run(db, stmt);
 }
 
 int db_login_failures(sqlite3 *db, const char *ip, long since){
-	sqlite3_stmt *stmt = cs_db_prepare(db, "SELECT COUNT(*) FROM login_failures WHERE ip = ? AND at > ?;");
+	sqlite3_stmt *stmt = cs_db_prepare(db, "SELECT COUNT(*) FROM cs_login_failures WHERE ip = ? AND at > ?;");
 	if (stmt == NULL){return -1;}
 	sqlite3_bind_text(stmt, 1, ip, -1, SQLITE_STATIC);
 	sqlite3_bind_int64(stmt, 2, since);
@@ -228,14 +239,14 @@ int db_login_failures(sqlite3 *db, const char *ip, long since){
 }
 
 void db_login_failure_add(sqlite3 *db, const char *ip, long now, long forget_before){
-	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO login_failures (ip, at) VALUES (?, ?);");
+	sqlite3_stmt *stmt = cs_db_prepare(db, "INSERT INTO cs_login_failures (ip, at) VALUES (?, ?);");
 	if (stmt != NULL){
 		sqlite3_bind_text(stmt, 1, ip, -1, SQLITE_STATIC);
 		sqlite3_bind_int64(stmt, 2, now);
 		cs_db_run(db, stmt);
 	}
 
-	sqlite3_stmt *clean = cs_db_prepare(db, "DELETE FROM login_failures WHERE at <= ?;");
+	sqlite3_stmt *clean = cs_db_prepare(db, "DELETE FROM cs_login_failures WHERE at <= ?;");
 	if (clean != NULL){
 		sqlite3_bind_int64(clean, 1, forget_before);
 		cs_db_run(db, clean);

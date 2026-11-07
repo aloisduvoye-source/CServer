@@ -41,6 +41,9 @@ int  static_serve(cs_ctx *c);  // 1 si le fichier a été envoyé, 0 s'il n'exis
 int      db_init(void);        // une fois au démarrage, avant les fork : tables + migrations
 sqlite3 *db_open(void);
 
+// généré par le Makefile depuis cserver/migrations/*.sql
+extern const cs_migration framework_migrations[];
+
 // comptes : 0 si le nom est pris, l'id sinon, -1 si erreur
 long db_user_create(sqlite3 *db, const char *name, const char *password_hash);
 int  db_user_find(sqlite3 *db, const char *name, cs_user *user, char *hash, size_t hash_size);

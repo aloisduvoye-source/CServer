@@ -2,6 +2,9 @@
 #include"cserver.h"
 #include"guestbook.h"
 
+// généré par le Makefile depuis migrations/*.sql
+extern const cs_migration site_migrations[];
+
 // page 404 du site
 static void not_found(cs_ctx *c){
 	const char *body = "<h1>404 dumbass</h1>\n";
@@ -32,6 +35,7 @@ int main(void){
 		.port        = 8080,
 		.static_dir  = "www",
 		.db_path     = "data/site.db",
+		.migrations  = site_migrations,
 		.routes      = routes,
 		.not_found   = not_found,
 		.cookie_name = "cserver_session",

@@ -99,6 +99,19 @@ sqlite3_stmt *cs_db_prepare(sqlite3 *db, const char *sql);
 // exécute une requête qui ne renvoie aucune ligne, puis la libère ; 0 si OK
 int cs_db_run(sqlite3 *db, sqlite3_stmt *stmt);
 
+// une étape de l'évolution du schéma. Un site les écrit dans migrations/*.sql
+// (un fichier par étape : 001_xxx.sql, 002_yyy.sql...) et le Makefile les intègre
+// au binaire avec cserver/tools/sql2c.sh, dans un tableau site_migrations.
+// Au démarrage, le framework applique dans l'ordre celles qui ne l'ont pas encore
+// été (chacune dans une transaction) et retient leur nom dans la table cs_migrations.
+// Une migration déjà appliquée ne se modifie JAMAIS : on en ajoute une nouvelle.
+// Les tables du framework (cs_users, cs_sessions...) existent déjà quand celles
+// du site sont créées : une table du site peut faire REFERENCES cs_users(id).
+typedef struct {
+	const char *name;   // unique et définitif, ex : "001_messages"
+	const char *sql;    // une ou plusieurs requêtes
+} cs_migration;
+
 /* ================================================================ comptes */
 
 // utilisateur connecté, ou NULL
@@ -128,6 +141,7 @@ typedef struct {
 	int             port;          // port d'écoute ; CSERVER_PORT l'emporte    défaut : 8080
 	const char     *static_dir;    // dossier des fichiers statiques            défaut : "www"
 	const char     *db_path;       // base SQLite ; CSERVER_DB l'emporte        défaut : "data/site.db"
+	const cs_migration *migrations;// tables du site, liste terminée par { NULL }
 	const cs_route *routes;        // table terminée par { NULL }
 	cs_handler      not_found;     // page 404                                  défaut : page minimale
 	const char     *cookie_name;   // cookie de session : un nom propre au site, car sur localhost

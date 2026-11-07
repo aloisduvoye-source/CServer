@@ -1,6 +1,8 @@
 #include<stdio.h>
 #include"messages.h"
 
+// le schéma de la table est dans migrations/001_messages.sql
+
 // colonnes lues par les deux requêtes ci-dessous, dans cet ordre
 #define MESSAGE_COLUMNS \
 	"id, IFNULL(user_id, 0), name, message, strftime('%Y-%m-%d %H:%M', created_at, 'localtime')"

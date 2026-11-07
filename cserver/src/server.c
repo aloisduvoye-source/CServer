@@ -65,6 +65,11 @@ static int load_config(const cs_app *app){
 }
 
 int cs_run(const cs_app *app){
+	// redirigé vers un fichier ou un pipe, stdout ne s'écrit que par gros blocs :
+	// les logs arriveraient en retard, dans le désordre, ou seraient perdus si le
+	// serveur est tué. Ligne par ligne, chaque printf est écrit tout de suite.
+	setvbuf(stdout, NULL, _IOLBF, 0);
+
 	if (load_config(app) < 0){
 		return 1;
 	}

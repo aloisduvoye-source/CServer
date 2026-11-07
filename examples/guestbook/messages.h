@@ -1,7 +1,7 @@
 #ifndef MESSAGES_H
 #define MESSAGES_H
 
-// requêtes SQL du livre d'or (la table messages)
+// requêtes SQL du livre d'or (le schéma est dans migrations/*.sql)
 
 #include"cserver.h"
 

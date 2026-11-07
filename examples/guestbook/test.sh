@@ -10,21 +10,34 @@ make -s -C ../.. || exit 1
 
 # base jetable : les tests ne touchent pas à data/site.db
 DBDIR=$(mktemp -d)
-CSERVER_DB="$DBDIR/test.db" CSERVER_PORT=$PORT ./server > /dev/null &
-PID=$!
 TMP=$(mktemp)
 trap 'kill $PID 2>/dev/null; rm -rf "$TMP" "$DBDIR"' EXIT
 
-for i in $(seq 50); do
-	curl -s -o /dev/null "$BASE/" && break
-	sleep 0.1
-done
-if ! kill -0 $PID 2>/dev/null; then
-	echo "le serveur n'a pas démarré (port $PORT déjà pris ?)"
-	exit 1
-fi
+start_server() { # start_server <fichier de log>
+	CSERVER_DB="$DBDIR/test.db" CSERVER_PORT=$PORT ./server > "$1" 2>&1 &
+	PID=$!
+	for i in $(seq 50); do
+		curl -s -o /dev/null "$BASE/" && break
+		sleep 0.1
+	done
+	if ! kill -0 $PID 2>/dev/null; then
+		echo "le serveur n'a pas démarré (port $PORT déjà pris ?)"
+		exit 1
+	fi
+}
+start_server "$DBDIR/server.log"
 
 FAIL=0
+
+# migrations : sur une base neuve, toutes sont appliquées, dans l'ordre
+expected="cserver/001_comptes cserver/002_prefixe_cs site/001_messages site/002_supprimer_counters"
+got=$(sed -n 's/^migration appliquée : //p' "$DBDIR/server.log" | tr '\n' ' ' | sed 's/ $//')
+if [ "$got" = "$expected" ]; then
+	echo "ok     migrations appliquées : $got"
+else
+	echo "ECHEC  migrations appliquées : '$got' (attendu '$expected')"
+	FAIL=1
+fi
 
 # méthode affichée : POST si les options curl contiennent des données
 method_of() {
@@ -228,5 +241,18 @@ check_contains "invalid name or password" /login --data-binary "name=jean&passwo
 check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 4
 check 401 POST /login --data-binary "name=jean&password=mauvais"                                   # 5
 check 429 POST /login --data-binary "name=jean&password=motdepasse1"       # bloqué, même avec le bon
+
+# redémarrage sur la même base : aucune migration rejouée, les données sont toujours là
+kill $PID; wait $PID 2>/dev/null
+start_server "$DBDIR/server2.log"
+n=$(grep -c "^migration appliquée" "$DBDIR/server2.log")
+if [ "$n" -eq 0 ]; then
+	echo "ok     redémarrage : aucune migration rejouée"
+else
+	echo "ECHEC  redémarrage : $n migration(s) rejouée(s)"
+	FAIL=1
+fi
+check_contains "<strong>zoe</strong>"     /guestbook
+check_contains '<span class="user">jean' /guestbook -b "$JEAN"                 # la session a survécu
 
 exit $FAIL
