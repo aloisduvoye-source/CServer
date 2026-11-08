@@ -406,37 +406,126 @@ Chaque cible tourne `FUZZ_TIME` secondes (60 par défaut : `make fuzz FUZZ_TIME=
 
 ## Mise en ligne
 
-**Jamais en root.** Une faille dans le serveur donnerait alors tous les droits sur la machine. Deux façons de l'éviter :
+cserver ne parle que HTTP. Pour un site public, on place devant lui **[Caddy](https://caddyserver.com)**, un proxy qui reçoit les visiteurs en HTTPS (il obtient et renouvelle les certificats tout seul) et transmet leurs requêtes au serveur, qui n'est joignable qu'en local :
 
-- **Docker** (le plus simple) : le [`Dockerfile`](../Dockerfile) du dépôt compile un site et le lance avec un utilisateur `cserver` qui ne peut écrire que dans `data/`.
-
-  ```sh
-  docker build -t mon-site .                                    # le projet à la racine
-  docker build -t guestbook --build-arg DIR=examples/guestbook .   # ou un exemple
-  docker run -d -p 8080:8080 -v mon-site-data:/site/data --restart unless-stopped mon-site
-  ```
-
-  La base est dans le volume `mon-site-data` : elle survit à une nouvelle image. `docker stop` arrête le serveur tout de suite.
-
-- **Sans Docker** : lancer `./server` avec un utilisateur créé pour lui (`sudo useradd --system cserver`). S'il faut le lancer en root, par exemple pour ouvrir le port 80, `.user = "cserver"` (ou `CSERVER_USER=cserver`) lui fait prendre cet utilisateur juste après l'ouverture du port, avant d'ouvrir la base. Sans cela, il démarre quand même mais affiche un avertissement.
-
-**HTTPS, avec un proxy.** cserver ne parle que HTTP. Un proxy placé devant reçoit les visiteurs en HTTPS et lui transmet leurs requêtes. Le dépôt en contient un prêt à l'emploi, avec [Caddy](https://caddyserver.com) qui obtient et renouvelle les certificats tout seul :
-
-```sh
-DOMAIN=mon-site.fr docker compose up -d --build                          # le projet
-DOMAIN=mon-site.fr DIR=examples/guestbook docker compose up -d --build   # un exemple
+```
+visiteur ──HTTPS──> Caddy (ports 80 et 443) ──HTTP──> ./server (port 8080, en local)
 ```
 
-Le domaine doit pointer vers la machine, avec les ports 80 et 443 ouverts. Sans `DOMAIN`, le site est sur `https://localhost` avec un certificat local, pour essayer. Les réglages sont dans [`compose.yaml`](../compose.yaml) et [`Caddyfile`](../Caddyfile).
+Deux façons de faire, au choix : **avec Docker** (le plus simple : tout est prêt dans le dépôt) ou **directement sur la machine**. Dans les deux cas, le serveur tourne avec un utilisateur sans droits, jamais en root.
+
+### 1. Le nom de domaine
+
+1. **L'acheter** chez un registrar (OVH, Gandi, Cloudflare…), environ 10 € par an pour un `.fr`.
+2. **Le faire pointer vers la machine** : dans l'interface du registrar, un enregistrement DNS de type `A` vers son adresse IP publique (`AAAA` pour une adresse IPv6). La prise en compte peut prendre de quelques minutes à quelques heures ; `dig +short mon-site.fr` affiche l'adresse quand c'est fait.
+3. **Ouvrir les ports 80 et 443** : dans le pare-feu de la machine (`sudo ufw allow 80,443/tcp` avec ufw), et sur la box si le serveur est chez soi. Caddy a besoin du port 80 pour prouver à Let's Encrypt que le domaine est à lui.
+
+**Pour essayer sans domaine**, utiliser `localhost`, ou un nom en `.localhost` (`guestbook.localhost`) que les navigateurs envoient vers la machine. Caddy fait alors un certificat local : le navigateur avertit, c'est normal.
+
+### 2a. Avec Docker
+
+Tout est dans le dépôt : [`Dockerfile`](../Dockerfile) (le site), [`compose.yaml`](../compose.yaml) (le site et Caddy) et [`Caddyfile`](../Caddyfile). Sur la machine, avec Docker installé :
+
+```sh
+git clone <ton dépôt> mon-site && cd mon-site
+DOMAIN=mon-site.fr docker compose up -d --build                          # le projet
+DOMAIN=mon-site.fr DIR=examples/guestbook docker compose up -d --build   # ou un exemple
+```
+
+C'est tout : le site est sur `https://mon-site.fr`, et redémarre tout seul avec la machine.
+
+| Pour | Commande |
+|---|---|
+| voir les journaux | `docker compose logs -f site` (ou `caddy`) |
+| mettre à jour le site | `git pull`, puis la même commande `up -d --build` |
+| arrêter | `docker compose down` (la base est conservée) |
+| tout effacer, base comprise | `docker compose down -v` |
+
+La base SQLite est dans le volume Docker `site-data`, les certificats dans `caddy-data` : ils survivent aux mises à jour. Le site n'a pas de port publié : seul Caddy peut le joindre, sur un réseau Docker privé, et `compose.yaml` règle `CSERVER_PROXY` sur l'adresse de Caddy.
+
+### 2b. Sans Docker
+
+Sur un serveur Debian ou Ubuntu, avec l'exemple `guestbook` (remplacer par son propre site).
+
+**Compiler et installer le site** :
+
+```sh
+sudo apt install gcc make libsqlite3-dev libcrypt-dev
+make DIR=examples/guestbook
+
+sudo useradd --system --shell /usr/sbin/nologin cserver      # un utilisateur sans droits
+sudo mkdir -p /srv/guestbook/data
+sudo cp -r examples/guestbook/server examples/guestbook/www examples/guestbook/templates /srv/guestbook/
+sudo chown cserver:cserver /srv/guestbook/data               # il ne peut écrire que là (la base)
+```
+
+**Le lancer avec systemd**, qui le démarre avec la machine et le relance s'il s'arrête. Le fichier `/etc/systemd/system/guestbook.service` :
+
+```ini
+[Unit]
+Description=guestbook (cserver)
+After=network.target
+
+[Service]
+User=cserver
+WorkingDirectory=/srv/guestbook
+ExecStart=/srv/guestbook/server
+# joignable seulement depuis la machine (donc par Caddy), et Caddy est cru
+# quand il donne l'adresse du visiteur
+Environment=CSERVER_HOST=127.0.0.1
+Environment=CSERVER_PROXY=127.0.0.1
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl enable --now guestbook
+curl -I http://127.0.0.1:8080/          # doit répondre HTTP/1.1 200
+```
+
+**Installer Caddy** : `sudo apt install caddy` (dans Debian 12+ et Ubuntu 23.04+ ; une version plus récente est sur le [dépôt apt de Caddy](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)). Il est lancé tout de suite, et à chaque démarrage. Remplacer tout le contenu de `/etc/caddy/Caddyfile` par :
+
+```
+mon-site.fr {
+	reverse_proxy 127.0.0.1:8080
+	encode gzip
+}
+```
+
+```sh
+sudo systemctl reload caddy
+```
+
+Caddy obtient le certificat dans les secondes qui suivent : le site est sur `https://mon-site.fr`, et `http://` y redirige.
+
+| Pour | Commande |
+|---|---|
+| voir les journaux | `journalctl -u guestbook -f`, `journalctl -u caddy -f` |
+| mettre à jour le site | recompiler, recopier `server`, `www/` et `templates/` dans `/srv/guestbook/` (sans toucher à `data/`), puis `sudo systemctl restart guestbook` |
+| plusieurs sites | un service par site, chacun sur son port (`CSERVER_PORT=8081`…), et un bloc par domaine dans le `Caddyfile` |
+
+### 3. Vérifier
+
+- `curl -I https://mon-site.fr` répond `HTTP/2 200`, sans erreur de certificat ;
+- dans les journaux du site, les requêtes viennent des adresses des visiteurs, pas de `127.0.0.1` ni de celle de Caddy ;
+- après une connexion, les cookies ont l'option `Secure` (outils de développement du navigateur, onglet Stockage).
+
+Si le certificat n'arrive pas : vérifier que le domaine pointe bien vers la machine (`dig +short mon-site.fr`) et que le port 80 est ouvert, puis lire `journalctl -u caddy` (ou `docker compose logs caddy`).
+
+### Ce que règlent `trusted_proxy` et `host`
 
 Derrière un proxy, toutes les connexions viennent de lui : sans réglage, les limites par adresse (connexions, inscriptions, `cs_rate_limit`) compteraient tous les visiteurs ensemble. Avec **`trusted_proxy`** (ou `CSERVER_PROXY`), le serveur croit ce que le proxy lui dit :
 
 - `X-Forwarded-For` : l'adresse du visiteur, dans `c->req.ip` (les journaux et les limites l'utilisent) ;
 - `X-Forwarded-Proto: https` : `c->req.https` vaut 1, et les cookies prennent l'option `Secure` (jamais envoyés en clair).
 
-Ces en-têtes ne sont crus que si la connexion vient d'une adresse de `trusted_proxy` : venant de n'importe qui d'autre, ils sont ignorés, sinon chacun pourrait changer d'adresse à volonté. Le `compose.yaml` règle tout cela.
+Ces en-têtes ne sont crus que si la connexion vient d'une adresse de `trusted_proxy` : venant de n'importe qui d'autre, ils sont ignorés, sinon chacun pourrait changer d'adresse à volonté. Caddy remplace l'en-tête `X-Forwarded-For` envoyé par le visiteur : il n'y a rien à régler de son côté.
 
-Sans Docker, avec Caddy installé sur la machine : `.host = "127.0.0.1"` (le site n'est joignable que par le proxy), `.trusted_proxy = "127.0.0.1"`, et dans le `Caddyfile` : `mon-site.fr { reverse_proxy localhost:8080 }`.
+**`host`** (ou `CSERVER_HOST`) `= "127.0.0.1"` : le serveur n'écoute que sur la machine, personne ne peut le joindre en contournant le proxy. Inutile dans Docker, où le site n'a pas de port publié.
+
+**Sans proxy, ni root** : `./server` lancé par un utilisateur sans droits suffit. S'il faut le lancer en root (pour ouvrir directement le port 80), `.user = "cserver"` (ou `CSERVER_USER=cserver`) lui fait prendre cet utilisateur juste après l'ouverture du port, avant d'ouvrir la base ; sans cela, il démarre quand même mais affiche un avertissement. L'image Docker seule s'utilise de la même façon : `docker build -t mon-site .`, puis `docker run -d -p 8080:8080 -v mon-site-data:/site/data mon-site`.
 
 ## Limites connues
 
