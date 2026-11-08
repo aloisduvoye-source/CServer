@@ -265,9 +265,10 @@ between() { awk -v t="$1" -v a="$2" -v b="$3" 'BEGIN { exit !(t >= a && t <= b) 
 
 # un corps envoyé goutte à goutte (20 octets/s pour 200 octets : 10 s) : chaque read()
 # reçoit quelque chose, mais la requête entière doit arriver en 2 s -> 408
+# (mesuré jusqu'à 5 s : selon sa version, curl espace ses envois différemment)
 head -c 200 /dev/zero | tr '\0' a > "$TMP"
 set -- $(timed --limit-rate 20 --data-binary @"$TMP" "$BASE/echo")
-[ "$1" = "408" ] && between "$2" 1.5 4 && pass "envoi goutte à goutte coupé : $1 en $2 s" || fail "envoi goutte à goutte : $1 en $2 s (attendu 408 vers 2 s)"
+[ "$1" = "408" ] && between "$2" 1.5 5 && pass "envoi goutte à goutte coupé : $1 en $2 s" || fail "envoi goutte à goutte : $1 en $2 s (attendu 408 vers 2 s)"
 
 # un handler trop long : arrêté au bout de request_timeout, le reste continue
 set -- $(timed "$BASE/lent")
